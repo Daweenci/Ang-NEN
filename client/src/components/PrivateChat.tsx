@@ -4,83 +4,77 @@ import { useShallow } from 'zustand/react/shallow';
 import type { Store } from '@/store';
 import type { Friend } from '@/structs';
 
-// Per-friend chat message shape (local only for now)
-type PrivateMessage = {
-  senderID: string;
-  content: string;
-  timestamp: number;
+type PrivateChatProps = {
+  sendPrivateMessage: (friendID: string, content: string) => void;
+  privateTyping: (friendID: string, isTyping: boolean) => void;
 };
 
-type FriendChatState = {
-  messages: PrivateMessage[];
-  unread: number;
-  lastActivity: number; // timestamp of most recent message either side
-};
+const TYPING_RESEND_MS = 2000; // re-announce typing while the user keeps typing
+const TYPING_IDLE_MS = 3000; // stop typing after this long without a keystroke
 
-// We keep chat state in a ref-stable map outside of React state to avoid
-// re-renders on every keystroke, but expose it through useState snapshots.
-function useFriendChats(friendIDs: string[]) {
-  const [chats, setChats] = useState<Record<string, FriendChatState>>(() => {
-    const init: Record<string, FriendChatState> = {};
-    for (const id of friendIDs) {
-      init[id] = { messages: [], unread: 0, lastActivity: 0 };
-    }
-    return init;
-  });
-
-  // Make sure newly-added friends get a slot
-  useEffect(() => {
-    setChats((prev) => {
-      let changed = false;
-      const next = { ...prev };
-      for (const id of friendIDs) {
-        if (!next[id]) {
-          next[id] = { messages: [], unread: 0, lastActivity: 0 };
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [friendIDs.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const sendMessage = (friendID: string, senderID: string, content: string) => {
-    const msg: PrivateMessage = { senderID, content, timestamp: Date.now() };
-    setChats((prev) => ({
-      ...prev,
-      [friendID]: {
-        messages: [...(prev[friendID]?.messages ?? []), msg],
-        unread: 0, // own messages don't add unread
-        lastActivity: msg.timestamp,
-      },
-    }));
-  };
-
-  const markRead = (friendID: string) => {
-    setChats((prev) => {
-      if (!prev[friendID] || prev[friendID].unread === 0) return prev;
-      return { ...prev, [friendID]: { ...prev[friendID], unread: 0 } };
-    });
-  };
-
-  return { chats, sendMessage, markRead };
-}
-
-export function PrivateChat() {
-  const { player, friendsList } = useStore(
+export function PrivateChat({ sendPrivateMessage, privateTyping }: PrivateChatProps) {
+  const { player, friendsList, chats, setActivePrivateChat, markPrivateRead } = useStore(
     useShallow((state: Store) => ({
       player: state.player,
       friendsList: state.friendsList,
+      chats: state.privateChats,
+      setActivePrivateChat: state.setActivePrivateChat,
+      markPrivateRead: state.markPrivateRead,
     }))
   );
-
-  const friendIDs = friendsList.map((f) => f.id);
-  const { chats, sendMessage, markRead } = useFriendChats(friendIDs);
 
   const [isOpen, setIsOpen] = useState(false);
   const [activeFriendID, setActiveFriendID] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState('');
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Typing indicator bookkeeping (refs: no re-render per keystroke)
+  const typingTo = useRef<string | null>(null);
+  const lastTypingSent = useRef(0);
+  const typingIdleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const stopTyping = () => {
+    if (typingIdleTimer.current) clearTimeout(typingIdleTimer.current);
+    typingIdleTimer.current = null;
+    if (typingTo.current) {
+      privateTyping(typingTo.current, false);
+      typingTo.current = null;
+      lastTypingSent.current = 0;
+    }
+  };
+
+  const handleTyping = () => {
+    if (!activeFriendID) return;
+    if (typingTo.current !== activeFriendID) stopTyping();
+    const now = Date.now();
+    if (now - lastTypingSent.current > TYPING_RESEND_MS) {
+      privateTyping(activeFriendID, true);
+      typingTo.current = activeFriendID;
+      lastTypingSent.current = now;
+    }
+    if (typingIdleTimer.current) clearTimeout(typingIdleTimer.current);
+    typingIdleTimer.current = setTimeout(stopTyping, TYPING_IDLE_MS);
+  };
+
+  // Tell the store which chat is visible, so incoming messages there count as read
+  useEffect(() => {
+    setActivePrivateChat(isOpen ? activeFriendID : null);
+    if (isOpen && activeFriendID) markPrivateRead(activeFriendID);
+  }, [isOpen, activeFriendID]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Stop typing / clear active chat when the component goes away (logout)
+  useEffect(() => () => {
+    stopTyping();
+    setActivePrivateChat(null);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Close the chat if that friend got removed
+  useEffect(() => {
+    if (activeFriendID && !friendsList.some((f) => f.id === activeFriendID)) {
+      setActiveFriendID(null);
+    }
+  }, [friendsList, activeFriendID]);
 
   // Scroll to bottom when active chat messages change
   useEffect(() => {
@@ -108,15 +102,20 @@ export function PrivateChat() {
   const activeChat = activeFriendID ? chats[activeFriendID] : null;
 
   const handleSelectFriend = (friend: Friend) => {
+    stopTyping();
     setActiveFriendID(friend.id);
-    markRead(friend.id);
     setInputValue('');
   };
 
   const handleSend = () => {
     const trimmed = inputValue.trim();
     if (!trimmed || !activeFriendID) return;
-    sendMessage(activeFriendID, player.id, trimmed);
+    // The server stops the typing indicator when the message arrives
+    if (typingIdleTimer.current) clearTimeout(typingIdleTimer.current);
+    typingIdleTimer.current = null;
+    typingTo.current = null;
+    lastTypingSent.current = 0;
+    sendPrivateMessage(activeFriendID, trimmed);
     setInputValue('');
   };
 
@@ -125,13 +124,12 @@ export function PrivateChat() {
   };
 
   const handleToggle = () => {
+    if (isOpen) stopTyping();
     setIsOpen((prev) => !prev);
-    if (!isOpen) {
-      // reset active friend when opening fresh
-    }
   };
 
   const handleBack = () => {
+    stopTyping();
     setActiveFriendID(null);
     setInputValue('');
   };
@@ -230,19 +228,20 @@ export function PrivateChat() {
 
                 {/* Messages */}
                 <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-1.5">
-                  {activeChat?.messages.length === 0 && (
+                  {(activeChat?.messages.length ?? 0) === 0 && (
                     <p className="text-xs text-gray-400 text-center mt-6">
                       Say hi to {activeFriend.name}!
                     </p>
                   )}
-                  {activeChat?.messages.map((msg, i) => {
+                  {activeChat?.messages.map((msg) => {
                     const isOwn = msg.senderID === player.id;
                     return (
                       <div
-                        key={i}
+                        key={msg.id}
                         className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}
                       >
                         <div
+                          title={new Date(msg.timestamp).toLocaleString()}
                           className={`px-2.5 py-1.5 rounded-2xl text-xs max-w-[75%] break-words ${
                             isOwn
                               ? 'bg-blue-500 text-white rounded-br-sm'
@@ -254,6 +253,9 @@ export function PrivateChat() {
                       </div>
                     );
                   })}
+                  {activeChat?.isTyping && (
+                    <p className="text-[10px] text-gray-400 italic">{activeFriend.name} is typing…</p>
+                  )}
                   <div ref={chatBottomRef} />
                 </div>
 
@@ -263,7 +265,11 @@ export function PrivateChat() {
                     ref={inputRef}
                     type="text"
                     value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
+                    onChange={(e) => {
+                      setInputValue(e.target.value);
+                      if (e.target.value) handleTyping();
+                      else stopTyping();
+                    }}
                     onKeyDown={handleKeyDown}
                     placeholder={`Message ${activeFriend.name}...`}
                     className="flex-1 border border-gray-200 rounded-xl px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"

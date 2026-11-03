@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
 import http from 'node:http';
@@ -10,6 +10,13 @@ import { authRouter } from './auth.js';
 import { attachWebSocketServer } from './websocket.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// server/.env (never committed, see .env.example)
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+if (!process.env.GEMINI_API_KEY) {
+  console.log('GEMINI_API_KEY not set — bots will join lobbies but not reply');
+}
+
 const CLIENT_DIST = path.resolve(__dirname, '../../client/dist');
 
 initDB();

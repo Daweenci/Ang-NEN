@@ -66,6 +66,20 @@ export type ChatMessage = {
   isBot: boolean;
 };
 
+export type PrivateMessage = {
+  id: number;
+  senderID: string;
+  content: string;
+  timestamp: number;
+};
+
+export type PrivateChatState = {
+  messages: PrivateMessage[];
+  unread: number;
+  lastActivity: number; // timestamp of most recent message either side
+  isTyping: boolean; // friend is typing to us
+};
+
 export type TypingPlayer = {
   playerID: string;
   playerName: string;
@@ -90,6 +104,9 @@ export const MessageTypes = {
   RequestRemoveBotFromLobby: "remove_bot_from_lobby",
   RequestStartedTyping: "started_typing",
   RequestSendLobbyChatMessage: "send_lobby_chat_message",
+  RequestSendPrivateMessage: "send_private_message",
+  RequestGetPrivateMessages: "get_private_messages",
+  RequestPrivateTyping: "private_typing",
 
   // Responses (sent from server)
   ResponseWelcome: "welcome",
@@ -120,6 +137,9 @@ export const MessageTypes = {
   ResponseInviteDeclined: "invite_declined",
   ResponseError: "error",
   ResponseFriendRemoved: "friend_removed",
+  ResponsePrivateMessage: "private_message",
+  ResponsePrivateMessages: "private_messages",
+  ResponsePrivateTyping: "private_typing_status",
 } as const;
 
 export const Page = {

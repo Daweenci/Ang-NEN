@@ -21,6 +21,9 @@ export const MessageType = {
   RequestInviteBotFriend: 'invite_bot_friend', // TODO
   RequestStartedTyping: 'started_typing',
   RequestSendLobbyChatMessage: 'send_lobby_chat_message',
+  RequestSendPrivateMessage: 'send_private_message',
+  RequestGetPrivateMessages: 'get_private_messages',
+  RequestPrivateTyping: 'private_typing',
 
   ResponseWelcome: 'welcome',
   ResponseLoginSuccessful: 'login_successful',
@@ -52,4 +55,7 @@ export const MessageType = {
   ResponseFriendsList: 'friends_list',
   ResponseError: 'error',
   ResponseFriendRemoved: 'friend_removed',
+  ResponsePrivateMessage: 'private_message',
+  ResponsePrivateMessages: 'private_messages',
+  ResponsePrivateTyping: 'private_typing_status',
 };

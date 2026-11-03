@@ -26,6 +26,9 @@ const routes = {
   [MessageType.RequestCreateCustomBot]: handlers.createCustomBotHandler,
   [MessageType.RequestInviteToLobby]: handlers.inviteToLobbyHandler,
   [MessageType.RequestDeclineInvite]: handlers.declineInviteHandler,
+  [MessageType.RequestSendPrivateMessage]: handlers.sendPrivateMessageHandler,
+  [MessageType.RequestGetPrivateMessages]: handlers.getPrivateMessagesHandler,
+  [MessageType.RequestPrivateTyping]: handlers.privateTypingHandler,
 };
 
 export function attachWebSocketServer(httpServer) {

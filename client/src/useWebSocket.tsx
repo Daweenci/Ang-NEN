@@ -1,5 +1,5 @@
 import { useRef, useEffect } from 'react';
-import type { yourLobby, Player, LobbyInvite } from './structs';
+import type { yourLobby, Player, LobbyInvite, Friend } from './structs';
 import { MessageTypes, Page } from './structs';
 import { toast } from 'sonner';
 import { useStore } from './store';
@@ -73,6 +73,13 @@ export function useWebSocket() {
       }));
     };
 
+    // Load stored private chats so previews and unread badges are there right away
+    const requestPrivateHistories = (friends: Friend[]) => {
+      for (const f of friends) {
+        socket.send(JSON.stringify({ type: MessageTypes.RequestGetPrivateMessages, friendID: f.id }));
+      }
+    };
+
     socket.onmessage = (event) => {
       if (ws.current !== socket) return;
       const data = JSON.parse(event.data);
@@ -86,7 +93,10 @@ export function useWebSocket() {
           if (data.message) toast(data.message);
           if (data.lobbies) useStore.getState().setBroadcastedLobbies(data.lobbies);
           if (data.pendingFriendRequests) useStore.getState().setPendingFriendRequests(data.pendingFriendRequests);
-          if (data.friendsList) useStore.getState().setFriendsList(data.friendsList);
+          if (data.friendsList) {
+            useStore.getState().setFriendsList(data.friendsList);
+            requestPrivateHistories(data.friendsList);
+          }
           break;
 
         case MessageTypes.ResponseLobbyList:
@@ -149,6 +159,7 @@ export function useWebSocket() {
 
         case MessageTypes.ResponseFriendsList:
           useStore.getState().setFriendsList(data.friendsList);
+          requestPrivateHistories(data.friendsList);
           break;
 
         case MessageTypes.ResponseFriendRequestSent:
@@ -196,6 +207,7 @@ export function useWebSocket() {
 
         case MessageTypes.ResponseFriendRequestAccepted:
           useStore.getState().addFriend(data.friend);
+          requestPrivateHistories([data.friend]);
           toast('Friend request accepted by ' + data.friend.name);
           break;
 
@@ -306,6 +318,26 @@ export function useWebSocket() {
           toast(`Removed ${friendName} from friends list`);
           break;
 
+        case MessageTypes.ResponsePrivateMessages:
+          useStore.getState().setPrivateHistory(data.friendID, data.messages);
+          break;
+
+        case MessageTypes.ResponsePrivateMessage: {
+          const store = useStore.getState();
+          store.addPrivateMessage(data.friendID, data.message);
+
+          const isIncoming = data.message.senderID !== store.player.id;
+          if (isIncoming && store.activePrivateChatID !== data.friendID) {
+            const friend = store.friendsList.find((f) => f.id === data.friendID);
+            toast(`${friend?.name ?? 'Friend'}: ${data.message.content}`, { id: `pm-${data.friendID}` });
+          }
+          break;
+        }
+
+        case MessageTypes.ResponsePrivateTyping:
+          useStore.getState().setPrivateTyping(data.friendID, data.isTyping);
+          break;
+
         case MessageTypes.ResponseError:
           toast(data.error || 'An error occurred');
           break;
@@ -329,6 +361,7 @@ export function useWebSocket() {
         useStore.getState().setPlayer({} as Player);
         useStore.getState().setLobby({} as yourLobby);
         useStore.getState().setBroadcastedLobbies([]);
+        useStore.getState().clearPrivateChats();
         useStore.getState().setPage(Page.Auth);
         toast('Logged in on another device');
       }
@@ -414,6 +447,11 @@ export function useWebSocket() {
       usesMemes,
       asksQuestions,
     });
+  const sendPrivateMessage = (friendID: string, content: string) =>
+    sendMessage({ type: MessageTypes.RequestSendPrivateMessage, friendID, content });
+  const privateTyping = (friendID: string, isTyping: boolean) =>
+    sendMessage({ type: MessageTypes.RequestPrivateTyping, friendID, isTyping });
+
   // Keep refs in sync so toast buttons always call the latest version
   joinLobbyRef.current = joinLobby;
   declineInviteRef.current = declineInvite;
@@ -431,6 +469,7 @@ export function useWebSocket() {
     useStore.getState().setPlayer({} as Player);
     useStore.getState().setLobby({} as yourLobby);
     useStore.getState().setBroadcastedLobbies([]);
+    useStore.getState().clearPrivateChats();
     useStore.getState().setPage(Page.Auth);
   };
 
@@ -469,6 +508,8 @@ export function useWebSocket() {
     startedTyping,
     stoppedTyping,
     createCustomBot,
+    sendPrivateMessage,
+    privateTyping,
     getAuthToken,
     setAuthToken,
     clearAuthToken,

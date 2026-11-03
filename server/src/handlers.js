@@ -29,6 +29,8 @@ import {
   handleFriendRequest,
   getFriendsList,
   removeFriend,
+  createPrivateMessage,
+  getPrivateMessages,
 } from './friendsStore.js';
 import {
   Bot,
@@ -289,6 +291,82 @@ export function pingAllFriendsOnlineStatusHandler(playerID, isOnline) {
   for (const f of getFriendsList(playerID)) {
     sendResponse(activePlayers.get(f.id), response);
   }
+}
+
+// ---------- Private chat ----------
+
+const MAX_PRIVATE_MESSAGE_LENGTH = 2000;
+
+export function sendPrivateMessageHandler(player, msg) {
+  const content = typeof msg.content === 'string' ? msg.content.trim() : '';
+  if (!content || content.length > MAX_PRIVATE_MESSAGE_LENGTH) {
+    sendErrorToPlayer(player, 'Invalid message');
+    return;
+  }
+  if (!areFriends(player.id, msg.friendID)) {
+    sendErrorToPlayer(player, 'You can only message friends');
+    return;
+  }
+
+  const message = createPrivateMessage(player.id, msg.friendID, content);
+  stopPrivateTyping(player.id, msg.friendID);
+
+  // Echo to the sender (confirms the stored message) and push live to the friend.
+  // friendID is always "the other person" from the receiver's point of view.
+  sendResponse(player, { type: MessageType.ResponsePrivateMessage, friendID: msg.friendID, message });
+  sendResponse(activePlayers.get(msg.friendID), {
+    type: MessageType.ResponsePrivateMessage,
+    friendID: player.id,
+    message,
+  });
+}
+
+export function getPrivateMessagesHandler(player, msg) {
+  if (!areFriends(player.id, msg.friendID)) {
+    sendErrorToPlayer(player, 'You can only message friends');
+    return;
+  }
+  sendResponse(player, {
+    type: MessageType.ResponsePrivateMessages,
+    friendID: msg.friendID,
+    messages: getPrivateMessages(player.id, msg.friendID),
+  });
+}
+
+const privateTypingTimers = new Map(); // "playerID:friendID" -> timeout
+
+export function privateTypingHandler(player, msg) {
+  if (!msg.isTyping) {
+    stopPrivateTyping(player.id, msg.friendID);
+    return;
+  }
+  if (!areFriends(player.id, msg.friendID)) return;
+
+  sendResponse(activePlayers.get(msg.friendID), {
+    type: MessageType.ResponsePrivateTyping,
+    friendID: player.id,
+    isTyping: true,
+  });
+
+  const key = `${player.id}:${msg.friendID}`;
+  clearTimeout(privateTypingTimers.get(key));
+  privateTypingTimers.set(
+    key,
+    setTimeout(() => stopPrivateTyping(player.id, msg.friendID), 5000)
+  );
+}
+
+function stopPrivateTyping(playerID, friendID) {
+  const key = `${playerID}:${friendID}`;
+  if (!privateTypingTimers.has(key)) return;
+  clearTimeout(privateTypingTimers.get(key));
+  privateTypingTimers.delete(key);
+
+  sendResponse(activePlayers.get(friendID), {
+    type: MessageType.ResponsePrivateTyping,
+    friendID: playerID,
+    isTyping: false,
+  });
 }
 
 // ---------- Lobby chat & typing ----------

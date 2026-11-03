@@ -32,6 +32,8 @@ export function App() {
     startedTyping,
     stoppedTyping,
     createCustomBot,
+    sendPrivateMessage,
+    privateTyping,
   } = useWebSocket();
 
   const handleConnectWebSocket = () => { connect(); };
@@ -66,7 +68,7 @@ export function App() {
               onRemoveFriend={(friendID) => handleRemoveFriend(friendID)}
             />
           </div>
-          <PrivateChat />
+          <PrivateChat sendPrivateMessage={sendPrivateMessage} privateTyping={privateTyping} />
       </>
       )}
       {(() => {
