@@ -269,32 +269,11 @@ export function useWebSocket() {
           toast.dismiss(`invite-${data.lobbyID}`);
           break;
 
-        case MessageTypes.ResponseBotCreating:
-          useStore.getState().setBotCreating(true);
-          break;
-
-        case MessageTypes.ResponseBotCreationFailed:
-          useStore.getState().setBotCreating(false);
-          toast(data.message || 'Failed to add bot');
-          break;
-
-        case MessageTypes.ResponseBotJoined:
-          useStore.getState().setBotCreating(false);
-          useStore.getState().addBot(data.bot);
-          toast(`${data.bot.name} joined the lobby`);
-          break;
-
-        case MessageTypes.ResponseBotLeft:
-          useStore.getState().removeBot(data.botID);
-          toast(`${data.botName} left the lobby`);
-          break;
-
         case MessageTypes.ResponseLobbyChatMessage:
           useStore.getState().addChatMessage({
             senderID: data.senderID,
             senderName: data.senderName,
             content: data.content,
-            isBot: data.isBot,
           });
           useStore.getState().removeTypingPlayer(data.senderID);
           break;
@@ -407,12 +386,6 @@ export function useWebSocket() {
   const declineInvite = (lobbyID: string) =>
     sendMessage({ type: MessageTypes.RequestDeclineInvite, lobbyID });
 
-  const addBotToLobby = (lobbyID: string) =>
-    sendMessage({ type: MessageTypes.RequestAddBotToLobby, lobbyID });
-
-  const removeBotFromLobby = (lobbyID: string, botID: string) =>
-    sendMessage({ type: MessageTypes.RequestRemoveBotFromLobby, lobbyID, botID });
-
   const sendLobbyChatMessage = (lobbyID: string, content: string) =>
     sendMessage({ type: MessageTypes.RequestSendLobbyChatMessage, lobbyID, content });
 
@@ -422,31 +395,6 @@ export function useWebSocket() {
   const stoppedTyping = (lobbyID: string) =>
     sendMessage({ type: MessageTypes.RequestStartedTyping, lobbyID, isTyping: false });
 
-  const createCustomBot = (
-    lobbyID: string,
-    archetypeId: string,
-    energy: number,
-    tilt: number,
-    chaos: number,
-    humor: number,
-    usesEmojis: boolean,
-    usesGamingSlang: boolean,
-    usesMemes: boolean,
-    asksQuestions: boolean,
-  ) =>
-    sendMessage({
-      type: 'create_custom_bot',
-      lobbyId: lobbyID,
-      archetypeId,
-      energy,
-      tilt,
-      chaos,
-      humor,
-      usesEmojis,
-      usesGamingSlang,
-      usesMemes,
-      asksQuestions,
-    });
   const sendPrivateMessage = (friendID: string, content: string) =>
     sendMessage({ type: MessageTypes.RequestSendPrivateMessage, friendID, content });
   const privateTyping = (friendID: string, isTyping: boolean) =>
@@ -502,12 +450,9 @@ export function useWebSocket() {
     cancelGame,
     inviteToLobby,
     declineInvite,
-    addBotToLobby,
-    removeBotFromLobby,
     sendLobbyChatMessage,
     startedTyping,
     stoppedTyping,
-    createCustomBot,
     sendPrivateMessage,
     privateTyping,
     getAuthToken,

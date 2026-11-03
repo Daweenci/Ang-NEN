@@ -13,12 +13,6 @@ export const MessageType = {
   RequestAcceptFriendRequest: 'accept_friend_request',
   RequestInviteToLobby: 'invite_to_lobby',
   RequestDeclineInvite: 'decline_invite',
-  RequestAddBotToLobby: 'add_bot_to_lobby',
-  RequestRemoveBotFromLobby: 'remove_bot_from_lobby',
-  RequestCreateCustomBot: 'create_custom_bot',
-  RequestAddBotFriend: 'add_bot_friend', // TODO
-  RequestRemoveBotFriend: 'remove_bot_friend', // TODO
-  RequestInviteBotFriend: 'invite_bot_friend', // TODO
   RequestStartedTyping: 'started_typing',
   RequestSendLobbyChatMessage: 'send_lobby_chat_message',
   RequestSendPrivateMessage: 'send_private_message',
@@ -44,12 +38,6 @@ export const MessageType = {
   ResponseInviteDeclined: 'invite_declined',
   ResponseInviteReceived: 'invite_received',
   ResponseInviteSent: 'invite_sent',
-  ResponseBotCreating: 'bot_creating',
-  ResponseBotCreationFailed: 'bot_creation_failed',
-  ResponseBotJoined: 'bot_joined',
-  ResponseBotLeft: 'bot_left',
-  ResponseBotFriendAdded: 'bot_friend_added', // TODO
-  ResponseBotFriendRemoved: 'bot_friend_removed', // TODO
   ResponsePlayerTyping: 'player_typing',
   ResponseLobbyChatMessage: 'lobby_chat_message',
   ResponseFriendsList: 'friends_list',

@@ -12,10 +12,7 @@ import {
   broadcastLobbyUpdate,
   broadcastLobbies,
   broadcastTyping,
-  broadcastBotJoined,
-  broadcastBotLeft,
   broadcastLobbyChatMessage,
-  broadcastToLobbyPlayers,
 } from './broadcasting.js';
 import {
   getPlayerIdByName,
@@ -32,13 +29,6 @@ import {
   createPrivateMessage,
   getPrivateMessages,
 } from './friendsStore.js';
-import {
-  Bot,
-  botArchetypes,
-  generateBotName,
-  pickBotPersonality,
-  randomPersonality,
-} from './botPlayer.js';
 
 // ---------- Lobbies ----------
 
@@ -124,10 +114,8 @@ export function createLobbyHandler(player, msg) {
     isPrivate: Boolean(msg.isPrivate),
     password: msg.password ?? '',
     players: [player],
-    bots: [],
     gameStart: [],
     chatHistory: [],
-    botCreating: false,
   };
   lobbies.set(lobby.id, lobby);
 
@@ -386,7 +374,6 @@ export function sendLobbyChatMessageHandler(player, msg) {
   const chatMsg = {
     senderID: player.id,
     senderName: player.name,
-    isBot: false,
     content: msg.content ?? '',
   };
   lobby.chatHistory.push(chatMsg);
@@ -395,12 +382,6 @@ export function sendLobbyChatMessageHandler(player, msg) {
   broadcastLobbyChatMessage(lobby, chatMsg);
 
   stopTyping(player.id, lobby);
-
-  // Wake the bots one after another in random order
-  const bots = [...lobby.bots].sort(() => Math.random() - 0.5);
-  bots.forEach((bot, i) => {
-    setTimeout(() => bot.wake(), i * 2500); // WOW das hat alles so viel besser gemacht unglaublich
-  });
 }
 
 const typingTimers = new Map(); // playerID -> timeout
@@ -432,116 +413,6 @@ function stopTyping(playerID, lobby) {
   if (!player) return;
 
   broadcastTyping(lobby, playerID, player.name, false);
-}
-
-// ---------- Bots ----------
-
-function failBotCreation(lobby, message) {
-  lobby.botCreating = false;
-  broadcastToLobbyPlayers(lobby, { type: MessageType.ResponseBotCreationFailed, message });
-}
-
-// Shared by random and custom bot creation
-function addBot(lobby, name, personality) {
-  if (isLobbyFull(lobby)) {
-    failBotCreation(lobby, 'Lobby is full');
-    return null;
-  }
-
-  const bot = new Bot(name, personality, lobby);
-  lobby.bots.push(bot);
-  lobby.botCreating = false;
-
-  broadcastBotJoined(lobby, bot);
-  broadcastLobbyUpdate(lobby);
-  broadcastLobbies();
-  return bot;
-}
-
-function beginBotCreation(lobby) {
-  if (isLobbyFull(lobby)) {
-    broadcastToLobbyPlayers(lobby, { type: MessageType.ResponseBotCreationFailed, message: 'Lobby is full' });
-    return false;
-  }
-  if (lobby.botCreating) {
-    broadcastToLobbyPlayers(lobby, {
-      type: MessageType.ResponseBotCreationFailed,
-      message: 'A bot is already being created',
-    });
-    return false;
-  }
-
-  lobby.botCreating = true;
-  broadcastToLobbyPlayers(lobby, { type: MessageType.ResponseBotCreating });
-  return true;
-}
-
-export function addBotToLobbyHandler(player, msg) {
-  const lobby = lobbies.get(msg.lobbyID);
-  if (!lobby) {
-    console.log('addBotToLobbyHandler: Lobby not found');
-    return;
-  }
-  if (!beginBotCreation(lobby)) return;
-
-  const { name, archetype } = pickBotPersonality(lobby);
-  const bot = addBot(lobby, name, randomPersonality(archetype.id));
-  if (bot) {
-    console.log(`Random bot created: ${bot.name} (${archetype.displayName})`);
-  }
-}
-
-export function createCustomBotHandler(player, msg) {
-  const lobby = lobbies.get(msg.lobbyId);
-  if (!lobby) {
-    console.log('createCustomBotHandler: Lobby not found');
-    return;
-  }
-  if (!beginBotCreation(lobby)) return;
-
-  const archetype = botArchetypes.find((a) => a.id === msg.archetypeId);
-  if (!archetype) {
-    failBotCreation(lobby, 'Invalid archetype');
-    return;
-  }
-
-  const personality = {
-    archetypeID: archetype.id,
-    energyLevel: msg.energy,
-    tiltLevel: msg.tilt,
-    chaosLevel: msg.chaos,
-    humorLevel: msg.humor,
-    usesEmojis: Boolean(msg.usesEmojis),
-    usesGamingSlang: Boolean(msg.usesGamingSlang),
-    usesMemes: Boolean(msg.usesMemes),
-    asksQuestions: Boolean(msg.asksQuestions),
-  };
-
-  const bot = addBot(lobby, generateBotName(), personality);
-  if (bot) {
-    console.log(`Custom bot created: ${bot.name} (${archetype.displayName})`);
-  }
-}
-
-export function removeBotFromLobbyHandler(player, msg) {
-  const lobby = lobbies.get(msg.lobbyID);
-  if (!lobby) {
-    console.log('removeBotFromLobbyHandler: Lobby not found');
-    return;
-  }
-
-  const bot = lobby.bots.find((b) => b.id === msg.botID);
-  if (!bot) {
-    console.log('removeBotFromLobbyHandler: Bot not found');
-    return;
-  }
-
-  bot.stop();
-  lobby.bots = lobby.bots.filter((b) => b.id !== bot.id);
-
-  broadcastBotLeft(lobby, bot.id, bot.name);
-  broadcastLobbyUpdate(lobby);
-  broadcastLobbies();
 }
 
 // ---------- Invites ----------

@@ -1,21 +1,17 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import type { CustomBotConfig, Friend } from '@/structs';
+import type { Friend } from '@/structs';
 import inviteIcon from "@/assets/invite.svg";
 import { useStore, type Store } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
-import { CustomBotModal } from '@/components/CustomBotModal';
 
 type LobbyScreenProps = {
   startGame: () => void;
   cancelGame: () => void;
   leaveLobby: () => void;
   inviteToLobby: (friendID: string) => void;
-  addBotToLobby: () => void;
-  removeBotFromLobby: (botID: string) => void;
   sendLobbyChatMessage: (content: string) => void;
   startedTyping: () => void;
   stoppedTyping: () => void;
-  createCustomBot: (cfg: CustomBotConfig) => void;
 };
 
 export function LobbyScreen({
@@ -23,20 +19,16 @@ export function LobbyScreen({
   cancelGame,
   leaveLobby,
   inviteToLobby,
-  addBotToLobby,
-  removeBotFromLobby,
   sendLobbyChatMessage,
   startedTyping,
   stoppedTyping,
-  createCustomBot,
 }: LobbyScreenProps) {
-  const { lobby, currentPlayer, chatMessages, typingPlayers, botCreating, friendsList } = useStore(
+  const { lobby, currentPlayer, chatMessages, typingPlayers, friendsList } = useStore(
     useShallow((state: Store) => ({
       lobby: state.lobby,
       currentPlayer: state.player,
       chatMessages: state.chatMessages,
       typingPlayers: state.typingPlayers,
-      botCreating: state.botCreating,
       friendsList: state.friendsList,
     }))
   );
@@ -46,7 +38,6 @@ export function LobbyScreen({
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
-  const [showCustomBot, setShowCustomBot] = useState(false)
 
   // Scroll to bottom when new messages arrive, not sure wether to keep
   useEffect(() => {
@@ -104,7 +95,7 @@ export function LobbyScreen({
     };
   }, []);
 
-  const totalOccupied = (lobby.players?.length ?? 0) + (lobby.bots?.length ?? 0);
+  const totalOccupied = lobby.players?.length ?? 0;
 
   const typingText = typingPlayers.length === 0
     ? null
@@ -126,7 +117,7 @@ export function LobbyScreen({
               {totalOccupied}/{lobby.maxPlayers} players
             </p>
 
-            {/* Player + bot list */}
+            {/* Player list */}
             <ul className="flex flex-col gap-1">
               {lobby.players?.map((player) => (
                 <li key={player.id} className="flex items-center gap-2 text-sm">
@@ -136,30 +127,6 @@ export function LobbyScreen({
                   </span>
                 </li>
               ))}
-              {lobby.bots?.map((bot) => (
-                <li key={bot.id} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-purple-400 shrink-0" />
-                        <span>{bot.name}</span>
-                    </div>
-                    <button
-                        onClick={() => removeBotFromLobby(bot.id)}
-                        className="text-gray-400 hover:text-red-500 transition text-xs ml-2"
-                        title="Remove bot"
-                    >
-                        ✕
-                    </button>
-                </li>
-            ))}
-            {botCreating && (
-                <li className="flex items-center gap-2 text-sm text-purple-400">
-                    <svg className="w-4 h-4 animate-spin shrink-0" viewBox="0 0 24 24" fill="none">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                    </svg>
-                    <span>Adding bot...</span>
-                </li>
-            )}
             </ul>
 
             {lobby.password && (
@@ -192,31 +159,6 @@ export function LobbyScreen({
                 </div>
               )}
             </div>
-
-            {/* Add bot */}
-            <div className="flex gap-2">
-              <button
-                onClick={addBotToLobby}
-                disabled={botCreating}
-                className="flex-1 border-2 border-purple-300 text-purple-600 rounded-xl px-3 py-2 hover:bg-purple-50 transition text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                + Random Bot
-              </button>
-              <button
-                onClick={() => setShowCustomBot(true)}
-                disabled={botCreating}
-                className="flex-1 border-2 border-purple-400 bg-purple-50 text-purple-700 rounded-xl px-3 py-2 hover:bg-purple-100 transition text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                + Custom Bot
-              </button>
-            </div>
-
-            {showCustomBot && (
-              <CustomBotModal
-                onClose={() => setShowCustomBot(false)}
-                onCreate={createCustomBot}
-              />
-            )}
 
             {/* Start / Cancel */}
             <button

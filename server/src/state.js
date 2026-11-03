@@ -4,11 +4,10 @@
 /**
  * @typedef {{ id: string, name: string, ws: import('ws').WebSocket }} Player
  * @typedef {{ playerID: string }} PlayerStarted
- * @typedef {{ senderID: string, senderName: string, isBot: boolean, content: string }} LobbyChatMessage
+ * @typedef {{ senderID: string, senderName: string, content: string }} LobbyChatMessage
  * @typedef {{
  *   id: string, name: string, maxPlayers: number, isPrivate: boolean, password: string,
- *   players: Player[], bots: import('./botPlayer.js').Bot[], gameStart: PlayerStarted[],
- *   chatHistory: LobbyChatMessage[], botCreating: boolean
+ *   players: Player[], gameStart: PlayerStarted[], chatHistory: LobbyChatMessage[]
  * }} Lobby
  */
 

@@ -7,10 +7,6 @@ export function toPlayerDTOs(players) {
   return players.map((p) => ({ id: p.id, name: p.name }));
 }
 
-export function toBotDTOs(bots) {
-  return bots.map((b) => ({ id: b.id, name: b.name }));
-}
-
 export function toLobbyDTO(lobby) {
   return {
     id: lobby.id,
@@ -18,7 +14,6 @@ export function toLobbyDTO(lobby) {
     maxPlayers: lobby.maxPlayers,
     isPrivate: lobby.isPrivate,
     players: toPlayerDTOs(lobby.players),
-    bots: toBotDTOs(lobby.bots),
     gameStart: lobby.gameStart.map((s) => ({ ...s })),
   };
 }
@@ -28,7 +23,7 @@ export function getLobbiesList() {
 }
 
 export function isLobbyFull(lobby) {
-  return lobby.players.length + lobby.bots.length >= lobby.maxPlayers;
+  return lobby.players.length >= lobby.maxPlayers;
 }
 
 export function sendResponse(player, response) {
@@ -74,10 +69,6 @@ export function removePlayerFromLobbies(playerID) {
   }
 }
 
-// Removes the lobby and stops all of its bots
 export function deleteLobby(lobby) {
-  for (const bot of lobby.bots) {
-    bot.stop();
-  }
   lobbies.delete(lobby.id);
 }

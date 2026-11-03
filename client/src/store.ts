@@ -35,7 +35,6 @@ export interface Store {
     pendingInvites: LobbyInvite[];
     chatMessages: ChatMessage[];
     typingPlayers: TypingPlayer[];
-    botCreating: boolean;
     privateChats: Record<string, PrivateChatState>; // friendID -> chat
     activePrivateChatID: string | null; // chat currently open on screen
 
@@ -68,9 +67,6 @@ export interface Store {
     removeTypingPlayer: (playerID: string) => void;
     clearTypingPlayers: () => void;
 
-    setBotCreating: (creating: boolean) => void;
-    addBot: (bot: any) => void;
-    removeBot: (botID: string) => void;
 
     removeFriend: (friendID: string) => void;
 
@@ -92,7 +88,6 @@ export const useStore = create<Store>((set) => ({
     pendingInvites: [],
     chatMessages: [],
     typingPlayers: [],
-    botCreating: false,
     privateChats: {},
     activePrivateChatID: null,
 
@@ -117,7 +112,6 @@ export const useStore = create<Store>((set) => ({
             lobby,
             chatMessages: chatMessages ?? [],
             typingPlayers: [],
-            botCreating: false,
             currentPage: Page.InLobby,
         }),
 
@@ -126,7 +120,6 @@ export const useStore = create<Store>((set) => ({
             lobby: {} as yourLobby,
             chatMessages: [],
             typingPlayers: [],
-            botCreating: false,
             currentPage: page,
         }),
 
@@ -185,30 +178,6 @@ export const useStore = create<Store>((set) => ({
         })),
 
     clearTypingPlayers: () => set({ typingPlayers: [] }),
-
-    setBotCreating: (creating) => set({ botCreating: creating }),
-
-    addBot: (bot) =>
-        set((state) => {
-        if (!state.lobby) return state;
-        return {
-            lobby: {
-            ...state.lobby,
-            bots: [...state.lobby.bots, bot],
-            },
-        };
-        }),
-
-    removeBot: (botID) =>
-        set((state) => {
-            if (!state.lobby) return state;
-            return {
-                lobby: {
-                ...state.lobby,
-                bots: state.lobby.bots.filter((b) => b.id !== botID),
-                },
-            };
-        }),
 
     removeFriend: (friendID) =>
         set((state) => {

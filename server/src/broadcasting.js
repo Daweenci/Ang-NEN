@@ -40,28 +40,12 @@ export function broadcastTyping(lobby, playerID, playerName, isTyping) {
   }
 }
 
-export function broadcastBotJoined(lobby, bot) {
-  broadcastToLobbyPlayers(lobby, {
-    type: MessageType.ResponseBotJoined,
-    bot: { id: bot.id, name: bot.name },
-  });
-}
-
-export function broadcastBotLeft(lobby, botID, botName) {
-  broadcastToLobbyPlayers(lobby, {
-    type: MessageType.ResponseBotLeft,
-    botID,
-    botName,
-  });
-}
-
 export function broadcastLobbyChatMessage(lobby, msg) {
   broadcastToLobbyPlayers(lobby, {
     type: MessageType.ResponseLobbyChatMessage,
     lobbyID: lobby.id,
     senderName: msg.senderName,
     senderID: msg.senderID,
-    isBot: msg.isBot,
     content: msg.content,
   });
 }

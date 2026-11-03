@@ -7,12 +7,10 @@ Portierung von [Daweenci/Web_Lobby](https://github.com/Daweenci/Web_Lobby): Das 
 
 | Anforderung | Umsetzung |
 |---|---|
-| Echtzeit-Updates von Daten | Lobby-Liste (`lobby_list`) und Lobby-Zustand (`lobby_updated`: Spieler, Bots, Bereit-Status) werden an alle Clients gepusht |
-| Live-Benachrichtigungen bei neuen Einträgen | Freundschaftsanfragen (`friend_request_received`), Lobby-Einladungen (`invite_received`), Online-/Offline-Status von Freunden, Bot betritt/verlässt Lobby |
-| Kollaboratives Bearbeiten | Gemeinsamer Lobby-Chat mit „schreibt gerade…“-Anzeige (`player_typing`), gemeinsamer Bereit-Status, Bots hinzufügen/entfernen |
+| Echtzeit-Updates von Daten | Lobby-Liste (`lobby_list`) und Lobby-Zustand (`lobby_updated`: Spieler, Bereit-Status) werden an alle Clients gepusht |
+| Live-Benachrichtigungen bei neuen Einträgen | Freundschaftsanfragen (`friend_request_received`), Lobby-Einladungen (`invite_received`), Online-/Offline-Status von Freunden, neue private Nachrichten (`private_message`) |
+| Kollaboratives Bearbeiten | Gemeinsamer Lobby-Chat und privater Chat zwischen Freunden, jeweils mit „schreibt gerade…“-Anzeige (`player_typing`, `private_typing_status`), gemeinsamer Bereit-Status |
 | Live-Aktualisierung ohne Neuladen | Alles läuft über eine dauerhafte WebSocket-Verbindung (`/ws`), REST nur für Login/Registrierung |
-
-Zusätzlich: KI-Bots (Google Gemini) mit Persönlichkeiten, die im Lobby-Chat mitschreiben.
 
 ## Struktur
 
@@ -24,9 +22,8 @@ server/
     index.js         Express-App, HTTP-Server, statische Auslieferung des Builds
     auth.js          POST /login, POST /register (JWT)
     websocket.js     WebSocket-Server, Authentifizierung, Message-Routing
-    handlers.js      Lobby-, Freundes-, Chat-, Einladungs- und Bot-Logik
+    handlers.js      Lobby-, Freundes-, Chat- und Einladungs-Logik
     broadcasting.js  Push an Lobby-Mitglieder / alle Clients
-    botPlayer.js     Gemini-Bots
     state.js         In-Memory-Zustand (Lobbys, aktive Spieler, Einladungen)
     db.js, playerStore.js, friendsStore.js, jwt.js, util.js
 ```
@@ -38,7 +35,7 @@ Voraussetzung: Node.js 20+
 ```bash
 npm install
 npm run install:all
-cp server/.env.example server/.env   # JWT_SECRET setzen, optional GEMINI_API_KEY
+cp server/.env.example server/.env   # JWT_SECRET setzen
 ```
 
 ## Starten

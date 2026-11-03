@@ -5,7 +5,6 @@ import { useWebSocket } from './useWebSocket';
 import { Toaster } from 'sonner';
 import { Auth } from './pages/Auth';
 import { useStore } from './store';
-import type { CustomBotConfig } from './structs';
 import { UserProfile } from '@/components/UserProfile';
 import { PrivateChat } from '@/components/PrivateChat';
 
@@ -26,12 +25,9 @@ export function App() {
     acceptFriendRequest,
     inviteToLobby,
     declineInvite,
-    addBotToLobby,
-    removeBotFromLobby,
     sendLobbyChatMessage,
     startedTyping,
     stoppedTyping,
-    createCustomBot,
     sendPrivateMessage,
     privateTyping,
   } = useWebSocket();
@@ -45,14 +41,9 @@ export function App() {
   const handleRemoveFriend = (friendID: string) => removeFriend(friendID);
   const handleInviteToLobby = (friendID: string) => inviteToLobby(lobby.id, friendID);
   const handleDeclineInvite = (lobbyID: string) => declineInvite(lobbyID);
-  const handleAddBotToLobby = () => addBotToLobby(lobby.id);
-  const handleRemoveBotFromLobby = (botID: string) => removeBotFromLobby(lobby.id, botID);
   const handleSendLobbyChatMessage = (content: string) => sendLobbyChatMessage(lobby.id, content);
   const handleStartedTyping = () => startedTyping(lobby.id);
   const handleStoppedTyping = () => stoppedTyping(lobby.id);
-  const handleCreateCustomBot = (cfg: CustomBotConfig) =>
-  createCustomBot(lobby.id, cfg.archetypeId, cfg.energy, cfg.tilt, cfg.chaos, cfg.humor,
-    cfg.usesEmojis, cfg.usesGamingSlang, cfg.usesMemes, cfg.asksQuestions);
   return (
     <>
       <Toaster />
@@ -89,12 +80,9 @@ export function App() {
                 cancelGame={handleCancelGame}
                 leaveLobby={handleLeaveLobby}
                 inviteToLobby={handleInviteToLobby}
-                addBotToLobby={handleAddBotToLobby}
-                removeBotFromLobby={handleRemoveBotFromLobby}
                 sendLobbyChatMessage={handleSendLobbyChatMessage}
                 startedTyping={handleStartedTyping}
                 stoppedTyping={handleStoppedTyping}
-                createCustomBot={handleCreateCustomBot}
               />
             );
           default:

@@ -31,7 +31,7 @@ export function MainMenu({
   const joinLobbyAccess = (id: string) => {
     for (const lobby of lobbies) {
       if (lobby.id === id) {
-        const totalOccupied = (lobby.players?.length ?? 0) + (lobby.bots?.length ?? 0);
+        const totalOccupied = lobby.players?.length ?? 0;
         if (totalOccupied >= lobby.maxPlayers) {
           toast('This lobby is full!');
           return;
@@ -55,7 +55,7 @@ export function MainMenu({
 
       <div id="existingLobbies" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 px-6">
         {lobbies?.map((lobby) => {
-          const totalOccupied = (lobby.players?.length ?? 0) + (lobby.bots?.length ?? 0);
+          const totalOccupied = lobby.players?.length ?? 0;
           return (
             <div
               key={lobby.id}
@@ -67,9 +67,6 @@ export function MainMenu({
               <ul className="list-disc pl-5 mb-2">
                 {lobby.players?.map((player, index) => (
                   <li key={index}>{player.name}</li>
-                ))}
-                {lobby.bots?.map((bot, index) => (
-                  <li key={'bot-' + index}>{bot.name}</li>
                 ))}
               </ul>
               <p>{lobby.isPrivate ? '🔒 Private' : '🌐 Public'}</p>

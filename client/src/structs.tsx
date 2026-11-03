@@ -3,23 +3,6 @@ export type Player = {
   id: string;
 };
 
-export type Bot = {
-  id: string;
-  name: string;
-};
-
-export type CustomBotConfig = {
-  archetypeId: string;
-  energy: number;
-  tilt: number;
-  chaos: number;
-  humor: number;
-  usesEmojis: boolean;
-  usesGamingSlang: boolean;
-  usesMemes: boolean;
-  asksQuestions: boolean;
-};
-
 export type Friend = {
   id: string;
   name: string;
@@ -33,7 +16,6 @@ export type yourLobby = {
   isPrivate: boolean;
   password: string;
   players: Player[];
-  bots: Bot[];
   gameStart: PlayersStarted[];
 };
 
@@ -43,7 +25,6 @@ export type broadcastedLobby = {
   maxPlayers: number;
   isPrivate: boolean;
   players: Player[];
-  bots: Bot[];
   gameStart: PlayersStarted[];
 };
 
@@ -63,7 +44,6 @@ export type ChatMessage = {
   senderID: string;
   senderName: string;
   content: string;
-  isBot: boolean;
 };
 
 export type PrivateMessage = {
@@ -128,10 +108,6 @@ export const MessageTypes = {
   ResponseFriendsList: "friends_list",
   ResponseInviteSent: "invite_sent",
   ResponseInviteReceived: "invite_received",
-  ResponseBotCreating: "bot_creating",
-  ResponseBotCreationFailed: "bot_creation_failed",
-  ResponseBotJoined: "bot_joined",
-  ResponseBotLeft: "bot_left",
   ResponsePlayerTyping: "player_typing",
   ResponseLobbyChatMessage: "lobby_chat_message",
   ResponseInviteDeclined: "invite_declined",
