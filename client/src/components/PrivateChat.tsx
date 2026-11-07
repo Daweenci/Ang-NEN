@@ -28,6 +28,7 @@ export function PrivateChat({ sendPrivateMessage, privateTyping }: PrivateChatPr
   const [inputValue, setInputValue] = useState('');
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Typing indicator bookkeeping (refs: no re-render per keystroke)
   const typingTo = useRef<string | null>(null);
@@ -88,6 +89,19 @@ export function PrivateChat({ sendPrivateMessage, privateTyping }: PrivateChatPr
     }
   }, [activeFriendID]);
 
+  // Close the open chat on a click/tap anywhere outside of it (panel + toggle button)
+  useEffect(() => {
+    if (!isOpen) return;
+    const handlePointerDown = (e: PointerEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        stopTyping();
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const totalUnread = Object.values(chats).reduce((acc, c) => acc + c.unread, 0);
 
   // Sort friends: online first, then offline. Within each group, sort by lastActivity desc.
@@ -135,7 +149,7 @@ export function PrivateChat({ sendPrivateMessage, privateTyping }: PrivateChatPr
   };
 
   return (
-    <div className="fixed bottom-4 left-6 z-50 flex flex-col items-start gap-2">
+    <div ref={containerRef} className="fixed bottom-4 left-6 z-50 flex flex-col items-start gap-2">
       {/* Expanded panel */}
       {isOpen && (
         <div

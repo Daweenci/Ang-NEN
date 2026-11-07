@@ -12,6 +12,8 @@ type LobbyScreenProps = {
   sendLobbyChatMessage: (content: string) => void;
   startedTyping: () => void;
   stoppedTyping: () => void;
+  addFriend: (friendName: string) => void;
+  acceptFriendRequest: (friendID: string, acceptRequest: boolean) => void;
 };
 
 export function LobbyScreen({
@@ -22,16 +24,21 @@ export function LobbyScreen({
   sendLobbyChatMessage,
   startedTyping,
   stoppedTyping,
+  addFriend,
+  acceptFriendRequest,
 }: LobbyScreenProps) {
-  const { lobby, currentPlayer, chatMessages, typingPlayers, friendsList } = useStore(
+  const { lobby, currentPlayer, chatMessages, typingPlayers, friendsList, pendingFriendRequests } = useStore(
     useShallow((state: Store) => ({
       lobby: state.lobby,
       currentPlayer: state.player,
       chatMessages: state.chatMessages,
       typingPlayers: state.typingPlayers,
       friendsList: state.friendsList,
+      pendingFriendRequests: state.pendingFriendRequests,
     }))
   );
+  // Players we sent a friend request to from this lobby (hides the Add button)
+  const [requestedIDs, setRequestedIDs] = useState<Set<string>>(new Set());
   const [gameStarting, setGameStarting] = useState(false);
   const [showFriends, setShowFriends] = useState(false);
   const [chatInput, setChatInput] = useState('');
@@ -119,14 +126,66 @@ export function LobbyScreen({
 
             {/* Player list */}
             <ul className="flex flex-col gap-1">
-              {lobby.players?.map((player) => (
-                <li key={player.id} className="flex items-center gap-2 text-sm">
-                  <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
-                  <span className={player.id === currentPlayer.id ? 'font-semibold' : ''}>
-                    {player.name}
-                  </span>
-                </li>
-              ))}
+              {lobby.players?.map((player) => {
+                const isMe = player.id === currentPlayer.id;
+                const isReady = lobby.gameStart?.some((s) => s.playerID === player.id) ?? false;
+                const isFriend = friendsList.some((f) => f.id === player.id);
+                const hasRequestedUs = pendingFriendRequests.some((r) => r.id === player.id);
+                const weRequested = requestedIDs.has(player.id);
+
+                return (
+                  <li key={player.id} className="flex items-center gap-2 text-sm min-h-7">
+                    <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                    <span className={`truncate ${isMe ? 'font-semibold' : ''}`}>{player.name}</span>
+
+                    {/* Ready: player pressed "Start Game" */}
+                    {isReady && (
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        className="w-4 h-4 text-green-600 shrink-0"
+                        aria-label="ready"
+                      >
+                        <title>Ready</title>
+                        <path
+                          fillRule="evenodd"
+                          d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    )}
+
+                    {/* Friend request for players who aren't friends yet */}
+                    {!isMe && !isFriend && (
+                      <span className="ml-auto shrink-0">
+                        {hasRequestedUs ? (
+                          <button
+                            onClick={() => acceptFriendRequest(player.id, true)}
+                            className="text-xs font-medium px-2 py-0.5 rounded-md bg-green-500 text-white hover:bg-green-600 transition"
+                            title={`Accept friend request from ${player.name}`}
+                          >
+                            Accept
+                          </button>
+                        ) : weRequested ? (
+                          <span className="text-xs text-gray-400">Requested</span>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              addFriend(player.name);
+                              setRequestedIDs((prev) => new Set(prev).add(player.id));
+                            }}
+                            className="text-xs font-medium px-2 py-0.5 rounded-md border border-blue-500 text-blue-600 hover:bg-blue-50 transition"
+                            title={`Send ${player.name} a friend request`}
+                          >
+                            + Add
+                          </button>
+                        )}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
 
             {lobby.password && (

@@ -83,6 +83,8 @@ export function App() {
                 sendLobbyChatMessage={handleSendLobbyChatMessage}
                 startedTyping={handleStartedTyping}
                 stoppedTyping={handleStoppedTyping}
+                addFriend={addFriend}
+                acceptFriendRequest={acceptFriendRequest}
               />
             );
           default:
