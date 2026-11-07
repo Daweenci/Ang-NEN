@@ -30,7 +30,7 @@ server/
 
 ## Setup
 
-Voraussetzung: Node.js 20+
+Voraussetzung: Node.js 22+
 
 ```bash
 npm install
