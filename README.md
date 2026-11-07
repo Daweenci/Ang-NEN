@@ -20,7 +20,8 @@ server/
   schema.sql       SQLite-Schema
   src/
     index.js         Express-App, HTTP-Server, statische Auslieferung des Builds
-    auth.js          POST /login, POST /register (JWT)
+    auth.js          POST /login, /register, /logout (JWT im HttpOnly-Cookie)
+    session.js       Session-Cookie setzen/lesen, erlaubte Origins
     websocket.js     WebSocket-Server, Authentifizierung, Message-Routing
     handlers.js      Lobby-, Freundes-, Chat- und Einladungs-Logik
     broadcasting.js  Push an Lobby-Mitglieder / alle Clients
@@ -35,7 +36,7 @@ Voraussetzung: Node.js 22+
 ```bash
 npm install
 npm run install:all
-cp server/.env.example server/.env   # JWT_SECRET setzen
+cp server/.env.example server/.env   # JWT_SECRET setzen, ggf. ALLOWED_ORIGINS
 ```
 
 ## Starten
@@ -55,5 +56,5 @@ npm start
 
 ## WebSocket-Protokoll
 
-Nach dem Verbindungsaufbau schickt der Client `{ "type": "authenticate", "token": "<JWT>" }` und bekommt `welcome` (Spieler, Lobbys, Freunde, offene Anfragen).
+Login und Registrierung setzen das JWT als `HttpOnly`-Cookie (`SameSite=Strict`, in Produktion `Secure`); der Client-Code sieht das Token nie. Beim WebSocket-Handshake auf `/ws` prüft der Server `Origin` (sonst 403) und das Session-Cookie (sonst 401) und schickt danach sofort `welcome` (Spieler, Lobbys, Freunde, offene Anfragen). In der Entwicklung leitet Vite `/login`, `/register`, `/logout` und `/ws` an den Server weiter, damit Client und API denselben Origin haben.
 Alle weiteren Nachrichten sind JSON mit einem `type`-Feld; die Liste steht in `server/src/messageTypes.js` bzw. `client/src/structs.tsx`.
