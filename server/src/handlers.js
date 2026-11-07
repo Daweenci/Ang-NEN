@@ -406,6 +406,9 @@ export function typingHandler(player, msg) {
 }
 
 function stopTyping(playerID, lobby) {
+  // Only announce "stopped typing" once: the chat message and the client's
+  // own stop signal both end up here.
+  if (!typingTimers.has(playerID)) return;
   clearTimeout(typingTimers.get(playerID));
   typingTimers.delete(playerID);
 
