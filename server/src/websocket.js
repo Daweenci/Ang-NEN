@@ -6,7 +6,7 @@ import { getPlayerByID } from './playerStore.js';
 import { getPendingFriendRequests } from './friendsStore.js';
 import { broadcastLobbies } from './broadcasting.js';
 import { sendResponse, sendErrorToPlayer, disconnectPlayer, getLobbiesList } from './util.js';
-import { getSessionToken, getAllowedOrigins } from './session.js';
+import { getAccessToken, getAllowedOrigins } from './session.js';
 import * as handlers from './handlers.js';
 
 // Message type -> handler(player, msg). The player is always taken from the
@@ -51,21 +51,22 @@ export function attachWebSocketServer(httpServer) {
       return;
     }
 
-    const dbPlayer = authenticateRequest(req);
-    if (!dbPlayer) {
+    const session = authenticateRequest(req);
+    if (!session) {
+      // Also for an expired access token: the client then calls /auth/refresh
       rejectUpgrade(socket, 401, 'Unauthorized');
       return;
     }
 
     wss.handleUpgrade(req, socket, head, (ws) => {
-      wss.emit('connection', ws, req, dbPlayer);
+      wss.emit('connection', ws, req, session);
     });
   });
 
-  wss.on('connection', (ws, req, dbPlayer) => {
+  wss.on('connection', (ws, req, session) => {
     console.log(`NEW WEBSOCKET CONNECTION from ${req.socket.remoteAddress}`);
 
-    const player = registerConnection(ws, dbPlayer);
+    const player = registerConnection(ws, session);
 
     ws.on('message', (data) => {
       let msg;
@@ -117,22 +118,26 @@ function rejectUpgrade(socket, status, reason) {
   socket.destroy();
 }
 
-// Returns the player for the session cookie of a handshake request, or null
+// Checks the access token cookie of a handshake request.
+// Returns { dbPlayer, sessionID } or null.
 function authenticateRequest(req) {
-  const token = getSessionToken(req);
+  const token = getAccessToken(req);
   if (!token) return null;
 
-  let playerID;
+  let claims;
   try {
-    playerID = parseJWT(token);
+    claims = parseJWT(token); // also rejects expired tokens
   } catch {
     return null;
   }
-  return getPlayerByID(playerID);
+  const dbPlayer = getPlayerByID(claims.playerID);
+  return dbPlayer ? { dbPlayer, sessionID: claims.sessionID } : null;
 }
 
-function registerConnection(ws, dbPlayer) {
-  const player = { id: dbPlayer.id, name: dbPlayer.username, ws };
+function registerConnection(ws, { dbPlayer, sessionID }) {
+  // The access token is only checked here. The connection stays open after
+  // it expires; logout closes it via the sessionID (closeSessionConnection).
+  const player = { id: dbPlayer.id, name: dbPlayer.username, sessionID, ws };
 
   const oldPlayer = activePlayers.get(player.id);
   if (oldPlayer) {

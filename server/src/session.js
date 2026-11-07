@@ -1,35 +1,51 @@
 import { parse as parseCookies } from 'cookie';
+import { getAccessTokenTTL } from './jwt.js';
+import { REFRESH_TOKEN_TTL_DAYS } from './refreshTokenStore.js';
 
-// The session JWT lives in an HttpOnly cookie: page scripts can't read it, and
-// the browser sends it along with every request to this origin, including the
-// WebSocket handshake.
-export const SESSION_COOKIE = 'session';
-const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000; // same lifetime as the JWT
+// Both tokens live in HttpOnly cookies: page scripts can't read them.
+//  - access token (JWT, 15 min): sent with every request, including the
+//    WebSocket handshake
+//  - refresh token (random, 14 days, sliding): only sent to /auth/*
+export const ACCESS_COOKIE = 'session';
+export const REFRESH_COOKIE = 'refresh';
+const REFRESH_COOKIE_PATH = '/auth';
 
-function cookieOptions() {
+function baseOptions() {
   return {
     httpOnly: true,
     // Secure cookies need HTTPS, so only require it in production
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict',
-    path: '/',
   };
 }
 
-export function setSessionCookie(res, token) {
-  res.cookie(SESSION_COOKIE, token, { ...cookieOptions(), maxAge: SESSION_MAX_AGE_MS });
+export function setSessionCookies(res, accessToken, refreshToken) {
+  res.cookie(ACCESS_COOKIE, accessToken, {
+    ...baseOptions(),
+    path: '/',
+    maxAge: getAccessTokenTTL() * 1000,
+  });
+  res.cookie(REFRESH_COOKIE, refreshToken, {
+    ...baseOptions(),
+    path: REFRESH_COOKIE_PATH,
+    maxAge: REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000,
+  });
 }
 
-export function clearSessionCookie(res) {
-  res.clearCookie(SESSION_COOKIE, cookieOptions());
+export function clearSessionCookies(res) {
+  res.clearCookie(ACCESS_COOKIE, { ...baseOptions(), path: '/' });
+  res.clearCookie(REFRESH_COOKIE, { ...baseOptions(), path: REFRESH_COOKIE_PATH });
 }
 
-// Reads the session token from a raw Node request (Express or WebSocket upgrade)
-export function getSessionToken(req) {
+function readCookie(req, name) {
   const header = req.headers.cookie;
   if (!header) return null;
-  return parseCookies(header)[SESSION_COOKIE] ?? null;
+  return parseCookies(header)[name] ?? null;
 }
+
+// Work on raw Node requests, so they also work for the WebSocket upgrade
+export const getAccessToken = (req) => readCookie(req, ACCESS_COOKIE);
+export const getRefreshToken = (req) => readCookie(req, REFRESH_COOKIE);
 
 // Origins that may open a WebSocket connection (checked during the handshake)
 export function getAllowedOrigins() {

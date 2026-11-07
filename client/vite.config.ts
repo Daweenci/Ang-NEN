@@ -12,7 +12,7 @@ export default defineConfig({
     proxy: {
       '/login': 'http://localhost:4000',
       '/register': 'http://localhost:4000',
-      '/logout': 'http://localhost:4000',
+      '/auth': 'http://localhost:4000',
       '/ws': { target: 'ws://localhost:4000', ws: true },
     },
   },

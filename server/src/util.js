@@ -35,6 +35,15 @@ export function sendErrorToPlayer(player, error) {
   sendResponse(player, { type: MessageType.ResponseError, error });
 }
 
+// Logout: closes the connection opened with this session (refresh token family)
+export function closeSessionConnection(sessionID) {
+  for (const player of activePlayers.values()) {
+    if (player.sessionID === sessionID) {
+      player.ws.close(4000, 'Logged out');
+    }
+  }
+}
+
 export function disconnectPlayer(playerID) {
   const player = activePlayers.get(playerID);
   if (player) {

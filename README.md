@@ -20,8 +20,9 @@ server/
   schema.sql       SQLite-Schema
   src/
     index.js         Express-App, HTTP-Server, statische Auslieferung des Builds
-    auth.js          POST /login, /register, /logout (JWT im HttpOnly-Cookie)
-    session.js       Session-Cookie setzen/lesen, erlaubte Origins
+    auth.js          POST /login, /register, /auth/refresh, /auth/logout
+    session.js       Cookies setzen/lesen, erlaubte Origins
+    refreshTokenStore.js  Refresh-Tokens (gehasht in SQLite, Rotation)
     websocket.js     WebSocket-Server, Authentifizierung, Message-Routing
     handlers.js      Lobby-, Freundes-, Chat- und Einladungs-Logik
     broadcasting.js  Push an Lobby-Mitglieder / alle Clients
@@ -56,5 +57,5 @@ npm start
 
 ## WebSocket-Protokoll
 
-Login und Registrierung setzen das JWT als `HttpOnly`-Cookie (`SameSite=Strict`, in Produktion `Secure`); der Client-Code sieht das Token nie. Beim WebSocket-Handshake auf `/ws` prüft der Server `Origin` (sonst 403) und das Session-Cookie (sonst 401) und schickt danach sofort `welcome` (Spieler, Lobbys, Freunde, offene Anfragen). In der Entwicklung leitet Vite `/login`, `/register`, `/logout` und `/ws` an den Server weiter, damit Client und API denselben Origin haben.
+Login und Registrierung setzen zwei `HttpOnly`-Cookies (`SameSite=Strict`, in Produktion `Secure`): ein Access-Token (JWT, 15 min, `Path=/`) und ein Refresh-Token (zufällig, 14 Tage, bei jeder Erneuerung verlängert, `Path=/auth`, gehasht in SQLite). Der Client-Code sieht die Tokens nie. Beim WebSocket-Handshake auf `/ws` prüft der Server `Origin` (sonst 403) und das Access-Token (sonst 401) und schickt danach sofort `welcome` (Spieler, Lobbys, Freunde, offene Anfragen). Ist das Access-Token abgelaufen, ruft der Client `POST /auth/refresh` auf (rotiert das Refresh-Token; Wiederverwendung eines alten Tokens sperrt die Sitzung) und verbindet sich neu. `POST /auth/logout` sperrt die Sitzung und schließt ihre Verbindung (Code 4000). In der Entwicklung leitet Vite `/login`, `/register`, `/auth` und `/ws` an den Server weiter, damit Client und API denselben Origin haben.
 Alle weiteren Nachrichten sind JSON mit einem `type`-Feld; die Liste steht in `server/src/messageTypes.js` bzw. `client/src/structs.tsx`.

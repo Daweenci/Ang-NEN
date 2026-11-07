@@ -64,3 +64,25 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_chat ON messages(first_player_id, second_player_id, created_at);
+
+
+-- Refresh tokens: one row per issued token, only the SHA-256 hash is stored.
+-- All tokens of one login share a family_id; rotation revokes the old row and
+-- adds a new one to the same family.
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id TEXT NOT NULL,
+    family_id TEXT NOT NULL,
+    token_hash TEXT UNIQUE NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NOT NULL,
+    revoked_at DATETIME,
+    revoke_reason TEXT,
+
+    FOREIGN KEY (player_id) REFERENCES players(id),
+
+    CHECK (revoke_reason IS NULL OR revoke_reason IN ('rotated', 'logout', 'reuse'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_family ON refresh_tokens(family_id);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires ON refresh_tokens(expires_at);

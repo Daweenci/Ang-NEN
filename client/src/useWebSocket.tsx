@@ -10,8 +10,8 @@ export function useWebSocket() {
   const joinLobbyRef = useRef<(lobbyID: string, password: string) => void>(() => {});
   const declineInviteRef = useRef<(lobbyID: string) => void>(() => {});
 
-  // The session token is an HttpOnly cookie set by /login and /register.
-  // Scripts can't read it; the browser sends it along with the WebSocket handshake.
+  // Access and refresh token are HttpOnly cookies set by the server. Scripts
+  // can't read them; the browser sends the access token with the handshake.
   const wsUrl = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`;
 
   const resetToAuth = () => {
@@ -46,7 +46,17 @@ export function useWebSocket() {
     };
   }, []);
 
-  const connect = () => {
+  // Exchanges the refresh token cookie for a new access token cookie
+  const refreshSession = async () => {
+    try {
+      const response = await fetch('/auth/refresh', { method: 'POST' });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  };
+
+  const connect = (afterRefresh = false) => {
     if (
       ws.current &&
       (ws.current.readyState === WebSocket.CONNECTING ||
@@ -64,8 +74,9 @@ export function useWebSocket() {
 
     const socket = new WebSocket(wsUrl);
     ws.current = socket;
-    // The server rejects the handshake without a valid session cookie, so a
-    // socket that never opened means "not logged in" rather than a lost connection.
+    // The server rejects the handshake without a valid access token cookie, so
+    // a socket that never opened means "not authenticated" rather than a lost
+    // connection. The access token only lives 15 minutes; try a refresh once.
     let opened = false;
 
     socket.onopen = () => {
@@ -338,7 +349,16 @@ export function useWebSocket() {
       console.log('WebSocket closed', event.code, event.reason);
       ws.current = null;
       if (!opened) {
-        resetToAuth(); // no valid session
+        if (afterRefresh) {
+          resetToAuth();
+          return;
+        }
+        refreshSession().then((ok) => {
+          if (ok) connect(true);
+          else resetToAuth(); // refresh token missing, expired or revoked
+        });
+      } else if (event.code === 4000) {
+        resetToAuth(); // session ended by logout
       } else if (event.code === 1008) {
         resetToAuth();
         toast('Logged in on another device');
@@ -405,7 +425,8 @@ export function useWebSocket() {
 
   const logout = async () => {
     try {
-      await fetch('/logout', { method: 'POST' }); // server clears the HttpOnly cookie
+      // Server revokes the refresh tokens, clears the cookies and closes the socket
+      await fetch('/auth/logout', { method: 'POST' });
     } catch (err) {
       console.error('Logout request failed:', err);
     }
