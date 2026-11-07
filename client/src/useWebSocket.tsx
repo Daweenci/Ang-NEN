@@ -10,9 +10,17 @@ export function useWebSocket() {
   const joinLobbyRef = useRef<(lobbyID: string, password: string) => void>(() => {});
   const declineInviteRef = useRef<(lobbyID: string) => void>(() => {});
 
-  const setAuthToken = (token: string) => localStorage.setItem('gameToken', token);
-  const getAuthToken = () => localStorage.getItem('gameToken');
-  const clearAuthToken = () => localStorage.removeItem('gameToken');
+  // The session token is an HttpOnly cookie set by /login and /register.
+  // Scripts can't read it; the browser sends it along with the WebSocket handshake.
+  const wsUrl = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`;
+
+  const resetToAuth = () => {
+    useStore.getState().setPlayer({} as Player);
+    useStore.getState().setLobby({} as yourLobby);
+    useStore.getState().setBroadcastedLobbies([]);
+    useStore.getState().clearPrivateChats();
+    useStore.getState().setPage(Page.Auth);
+  };
 
   const getPlayersLeft = (prev: Player[] = [], next: Player[] = []) => {
     return prev.filter(
@@ -54,23 +62,15 @@ export function useWebSocket() {
       ws.current = null;
     }
 
-    const token = getAuthToken();
-    if (!token) {
-      console.error('No auth token found. Cannot connect WebSocket.');
-      useStore.getState().setPage(Page.Auth);
-      return;
-    }
-
-    const wsUrl = import.meta.env.REACT_APP_WS_URL || 'ws://localhost:4000/ws';
     const socket = new WebSocket(wsUrl);
     ws.current = socket;
+    // The server rejects the handshake without a valid session cookie, so a
+    // socket that never opened means "not logged in" rather than a lost connection.
+    let opened = false;
 
     socket.onopen = () => {
       if (ws.current !== socket) return;
-      socket.send(JSON.stringify({
-        type: MessageTypes.RequestAuthentication,
-        token: token,
-      }));
+      opened = true; // the server sends "welcome" on its own
     };
 
     // Load stored private chats so previews and unread badges are there right away
@@ -328,6 +328,7 @@ export function useWebSocket() {
 
     socket.onerror = (err) => {
       if (ws.current !== socket) return;
+      if (!opened) return; // handshake rejected: handled in onclose
       console.error('WebSocket error:', err);
       toast('Connection error');
     };
@@ -336,12 +337,10 @@ export function useWebSocket() {
       if (ws.current !== socket) return;
       console.log('WebSocket closed', event.code, event.reason);
       ws.current = null;
-      if (event.code === 1008) {
-        useStore.getState().setPlayer({} as Player);
-        useStore.getState().setLobby({} as yourLobby);
-        useStore.getState().setBroadcastedLobbies([]);
-        useStore.getState().clearPrivateChats();
-        useStore.getState().setPage(Page.Auth);
+      if (!opened) {
+        resetToAuth(); // no valid session
+      } else if (event.code === 1008) {
+        resetToAuth();
         toast('Logged in on another device');
       }
     };
@@ -404,8 +403,12 @@ export function useWebSocket() {
   joinLobbyRef.current = joinLobby;
   declineInviteRef.current = declineInvite;
 
-  const logout = () => {
-    clearAuthToken();
+  const logout = async () => {
+    try {
+      await fetch('/logout', { method: 'POST' }); // server clears the HttpOnly cookie
+    } catch (err) {
+      console.error('Logout request failed:', err);
+    }
     if (ws.current) {
       ws.current.onopen = null;
       ws.current.onmessage = null;
@@ -414,16 +417,13 @@ export function useWebSocket() {
       ws.current.close();
       ws.current = null;
     }
-    useStore.getState().setPlayer({} as Player);
-    useStore.getState().setLobby({} as yourLobby);
-    useStore.getState().setBroadcastedLobbies([]);
-    useStore.getState().clearPrivateChats();
-    useStore.getState().setPage(Page.Auth);
+    resetToAuth();
   };
 
   useEffect(() => {
-    const token = getAuthToken();
-    if (token) connect();
+    // Try to resume an existing session; without a valid cookie the handshake
+    // is rejected and the login page stays.
+    connect();
 
     return () => {
       if (ws.current) {
@@ -455,8 +455,5 @@ export function useWebSocket() {
     stoppedTyping,
     sendPrivateMessage,
     privateTyping,
-    getAuthToken,
-    setAuthToken,
-    clearAuthToken,
   };
 }

@@ -35,12 +35,6 @@ export function sendErrorToPlayer(player, error) {
   sendResponse(player, { type: MessageType.ResponseError, error });
 }
 
-// Used before the connection is authenticated (no Player object yet)
-export function sendErrorToConn(ws, error) {
-  if (ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({ type: MessageType.ResponseError, error }));
-}
-
 export function disconnectPlayer(playerID) {
   const player = activePlayers.get(playerID);
   if (player) {

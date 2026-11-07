@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { MessageType } from './messageTypes.js';
 import { createPlayer, verifyPlayerCredentials } from './playerStore.js';
 import { generateJWT } from './jwt.js';
+import { setSessionCookie, clearSessionCookie } from './session.js';
 
 export const authRouter = Router();
 
@@ -35,7 +36,9 @@ authRouter.post('/login', (req, res) => {
     return res.status(500).json({ type: MessageType.ResponseLoginFailed, message: 'Failed to generate token' });
   }
 
-  res.status(200).json({ token, type: MessageType.ResponseLoginSuccessful, message: 'Login successful' });
+  // The token goes into an HttpOnly cookie only, never into the response body
+  setSessionCookie(res, token);
+  res.status(200).json({ type: MessageType.ResponseLoginSuccessful, message: 'Login successful' });
 });
 
 authRouter.post('/register', (req, res) => {
@@ -62,5 +65,11 @@ authRouter.post('/register', (req, res) => {
       .json({ type: MessageType.ResponseRegisterFailed, message: 'Failed to generate token' });
   }
 
-  res.status(201).json({ token, type: MessageType.ResponseRegisterSuccessful, message: 'Registration successful' });
+  setSessionCookie(res, token);
+  res.status(201).json({ type: MessageType.ResponseRegisterSuccessful, message: 'Registration successful' });
+});
+
+authRouter.post('/logout', (req, res) => {
+  clearSessionCookie(res);
+  res.status(204).end();
 });

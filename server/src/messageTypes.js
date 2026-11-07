@@ -1,6 +1,5 @@
 // Must stay in sync with client/src/structs.tsx (MessageTypes)
 export const MessageType = {
-  RequestAuthentication: 'authenticate',
   RequestLogin: 'login',
   RequestRegister: 'register',
   RequestCreateLobby: 'create_lobby',

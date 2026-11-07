@@ -5,7 +5,8 @@ import { parseJWT } from './jwt.js';
 import { getPlayerByID } from './playerStore.js';
 import { getPendingFriendRequests } from './friendsStore.js';
 import { broadcastLobbies } from './broadcasting.js';
-import { sendResponse, sendErrorToConn, sendErrorToPlayer, disconnectPlayer, getLobbiesList } from './util.js';
+import { sendResponse, sendErrorToPlayer, disconnectPlayer, getLobbiesList } from './util.js';
+import { getSessionToken, getAllowedOrigins } from './session.js';
 import * as handlers from './handlers.js';
 
 // Message type -> handler(player, msg). The player is always taken from the
@@ -29,30 +30,53 @@ const routes = {
 };
 
 export function attachWebSocketServer(httpServer) {
-  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  // noServer: the handshake is checked in the 'upgrade' handler below first,
+  // so unauthenticated clients never get a WebSocket connection at all.
+  const wss = new WebSocketServer({ noServer: true });
+  const allowedOrigins = getAllowedOrigins();
 
-  wss.on('connection', (ws, req) => {
+  httpServer.on('upgrade', (req, socket, head) => {
+    socket.on('error', (err) => console.log(`Upgrade socket error: ${err.message}`));
+
+    const { pathname } = new URL(req.url, 'http://localhost');
+    if (pathname !== '/ws') {
+      socket.destroy();
+      return;
+    }
+
+    // The browser sends the session cookie automatically, also from foreign
+    // pages. Checking the Origin header prevents cross-site WebSocket hijacking.
+    if (!allowedOrigins.includes(req.headers.origin)) {
+      rejectUpgrade(socket, 403, 'Forbidden');
+      return;
+    }
+
+    const dbPlayer = authenticateRequest(req);
+    if (!dbPlayer) {
+      rejectUpgrade(socket, 401, 'Unauthorized');
+      return;
+    }
+
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit('connection', ws, req, dbPlayer);
+    });
+  });
+
+  wss.on('connection', (ws, req, dbPlayer) => {
     console.log(`NEW WEBSOCKET CONNECTION from ${req.socket.remoteAddress}`);
 
-    // Set once the client sent a valid "authenticate" message
-    let player = null;
+    const player = registerConnection(ws, dbPlayer);
 
     ws.on('message', (data) => {
       let msg;
       try {
         msg = JSON.parse(data.toString());
       } catch {
-        sendErrorToConn(ws, 'Invalid message format');
+        sendErrorToPlayer(player, 'Invalid message format');
         return;
       }
       if (!msg || typeof msg !== 'object') {
-        sendErrorToConn(ws, 'Invalid message format');
-        return;
-      }
-
-      // If not authenticated yet, only accept authenticate messages
-      if (!player) {
-        player = authenticate(ws, msg);
+        sendErrorToPlayer(player, 'Invalid message format');
         return;
       }
 
@@ -71,8 +95,6 @@ export function attachWebSocketServer(httpServer) {
     });
 
     ws.on('close', () => {
-      if (!player) return;
-
       // Only clean up if this connection is still the active one
       // (it may have been replaced by a newer login of the same player)
       if (activePlayers.get(player.id)?.ws === ws) {
@@ -90,26 +112,26 @@ export function attachWebSocketServer(httpServer) {
   return wss;
 }
 
-function authenticate(ws, msg) {
-  if (msg.type !== MessageType.RequestAuthentication || !msg.token) {
-    sendErrorToConn(ws, 'Authentication required');
-    return null;
-  }
+function rejectUpgrade(socket, status, reason) {
+  socket.write(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\n\r\n`);
+  socket.destroy();
+}
+
+// Returns the player for the session cookie of a handshake request, or null
+function authenticateRequest(req) {
+  const token = getSessionToken(req);
+  if (!token) return null;
 
   let playerID;
   try {
-    playerID = parseJWT(msg.token);
+    playerID = parseJWT(token);
   } catch {
-    sendErrorToConn(ws, 'Invalid or expired token');
     return null;
   }
+  return getPlayerByID(playerID);
+}
 
-  const dbPlayer = getPlayerByID(playerID);
-  if (!dbPlayer) {
-    sendErrorToConn(ws, 'Player not found');
-    return null;
-  }
-
+function registerConnection(ws, dbPlayer) {
   const player = { id: dbPlayer.id, name: dbPlayer.username, ws };
 
   const oldPlayer = activePlayers.get(player.id);
@@ -128,7 +150,7 @@ function authenticate(ws, msg) {
     pendingFriendRequests: getPendingFriendRequests(player.id),
     friendsList: handlers.getFriendsWithOnlineStatus(player.id),
   });
-  console.log(`Player ${player.id} authenticated successfully`);
+  console.log(`Player ${player.id} connected and authenticated`);
   handlers.pingAllFriendsOnlineStatusHandler(player.id, true);
 
   return player;

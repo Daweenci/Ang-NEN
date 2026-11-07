@@ -1,6 +1,5 @@
 import dotenv from 'dotenv';
 import express from 'express';
-import cors from 'cors';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,7 +18,8 @@ const CLIENT_DIST = path.resolve(__dirname, '../../client/dist');
 initDB();
 
 const app = express();
-app.use(cors()); // allow all origins, like the Go version
+// No CORS: client and API share one origin (in development via the Vite proxy),
+// which is also what lets the session cookie stay SameSite=Strict.
 app.use(express.json());
 
 app.use(authRouter);

@@ -38,8 +38,9 @@ export function Auth({ connectWebSocket }: AuthProps) {
 
   async function onRegister(name: string, password: string) {
     try {
-      const API_URL = import.meta.env.REACT_APP_API_URL || 'http://localhost:4000';
-      const response = await fetch(`${API_URL}/register`, {
+      // Same origin (Vite proxies /register in development); the response sets
+      // the HttpOnly session cookie, the token never reaches this script
+      const response = await fetch('/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -50,10 +51,6 @@ export function Auth({ connectWebSocket }: AuthProps) {
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.message);
-      }
-
-      if (data.token) {
-        localStorage.setItem('gameToken', data.token);
       }
 
       connectWebSocket();
@@ -66,8 +63,9 @@ export function Auth({ connectWebSocket }: AuthProps) {
 
   async function onLogin(name: string, password: string) {
     try {
-      const API_URL = import.meta.env.REACT_APP_API_URL || 'http://localhost:4000';
-      const response = await fetch(`${API_URL}/login`, {
+      // Same origin (Vite proxies /login in development); the response sets
+      // the HttpOnly session cookie, the token never reaches this script
+      const response = await fetch('/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -78,10 +76,6 @@ export function Auth({ connectWebSocket }: AuthProps) {
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.message);
-      }
-
-      if (data.token) {
-        localStorage.setItem('gameToken', data.token);
       }
 
       connectWebSocket();

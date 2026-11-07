@@ -67,7 +67,6 @@ export type TypingPlayer = {
 
 export const MessageTypes = {
   // Requests (sent from client)
-  RequestAuthentication: "authenticate",
   RequestLogin: "login",
   RequestRegister: "register",
   RequestCreateLobby: "create_lobby",
