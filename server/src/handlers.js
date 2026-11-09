@@ -14,21 +14,21 @@ import {
   broadcastTyping,
   broadcastLobbyChatMessage,
 } from './broadcasting.js';
+// Database calls run in the database worker and return Promises (database.js).
+// Handlers that use them are async; websocket.js still runs the messages of one
+// connection strictly one after another.
 import {
   getPlayerIdByName,
   getPlayerByID,
-} from './playerStore.js';
-import {
   areFriends,
   createFriendRequest,
-  FriendRequestExistsError,
   getPendingFriendRequests,
   handleFriendRequest,
   getFriendsList,
   removeFriend,
   createPrivateMessage,
   getPrivateMessages,
-} from './friendsStore.js';
+} from './database.js';
 
 // ---------- Lobbies ----------
 
@@ -153,8 +153,8 @@ function sendFriendRequestResult(player, success, message) {
   sendResponse(player, { type: MessageType.ResponseFriendRequestSent, success, message });
 }
 
-export function sendFriendRequestHandler(player, msg) {
-  const friendID = getPlayerIdByName(msg.friendName ?? '');
+export async function sendFriendRequestHandler(player, msg) {
+  const friendID = await getPlayerIdByName(msg.friendName ?? '');
   if (!friendID) {
     sendFriendRequestResult(player, false, 'Player not found');
     return;
@@ -165,15 +165,15 @@ export function sendFriendRequestHandler(player, msg) {
     return;
   }
 
-  if (areFriends(player.id, friendID)) {
+  if (await areFriends(player.id, friendID)) {
     sendFriendRequestResult(player, false, 'You are already friends');
     return;
   }
 
   try {
-    createFriendRequest(player.id, friendID);
+    await createFriendRequest(player.id, friendID);
   } catch (err) {
-    if (err instanceof FriendRequestExistsError) {
+    if (err.name === 'FriendRequestExistsError') {
       sendFriendRequestResult(player, false, 'Friend request already sent');
       return;
     }
@@ -196,12 +196,12 @@ export function sendFriendRequestHandler(player, msg) {
   });
 }
 
-export function acceptFriendRequestHandler(player, msg) {
+export async function acceptFriendRequestHandler(player, msg) {
   const friendID = msg.friendID;
   const acceptRequest = Boolean(msg.acceptRequest);
 
   try {
-    handleFriendRequest(friendID, player.id, acceptRequest);
+    await handleFriendRequest(friendID, player.id, acceptRequest);
   } catch (err) {
     sendErrorToPlayer(player, 'Error handling friend request');
     console.log(`acceptFriendRequestHandler: ${err.message}`);
@@ -210,12 +210,12 @@ export function acceptFriendRequestHandler(player, msg) {
 
   sendResponse(player, {
     type: MessageType.ResponsePendingFriendRequests,
-    pendingFriendRequests: getPendingFriendRequests(player.id),
+    pendingFriendRequests: await getPendingFriendRequests(player.id),
   });
   if (acceptRequest) {
     sendResponse(player, {
       type: MessageType.ResponseFriendsList,
-      friendsList: getFriendsWithOnlineStatus(player.id),
+      friendsList: await getFriendsWithOnlineStatus(player.id),
     });
   }
 
@@ -226,7 +226,7 @@ export function acceptFriendRequestHandler(player, msg) {
   }
   sendResponse(friend, {
     type: MessageType.ResponsePendingFriendRequests,
-    pendingFriendRequests: getPendingFriendRequests(friendID),
+    pendingFriendRequests: await getPendingFriendRequests(friendID),
   });
 
   if (acceptRequest) {
@@ -237,9 +237,9 @@ export function acceptFriendRequestHandler(player, msg) {
   }
 }
 
-export function removeFriendHandler(player, msg) {
+export async function removeFriendHandler(player, msg) {
   try {
-    removeFriend(player.id, msg.friendID);
+    await removeFriend(player.id, msg.friendID);
   } catch (err) {
     console.log(`removeFriendHandler: ${err.message}`);
     sendErrorToPlayer(player, 'Error removing friend');
@@ -252,21 +252,21 @@ export function removeFriendHandler(player, msg) {
   if (friend) {
     sendResponse(friend, {
       type: MessageType.ResponseFriendsList,
-      friendsList: getFriendsWithOnlineStatus(msg.friendID),
+      friendsList: await getFriendsWithOnlineStatus(msg.friendID),
     });
   }
 }
 
-export function getFriendsWithOnlineStatus(playerID) {
-  return getFriendsList(playerID).map((f) => ({
+export async function getFriendsWithOnlineStatus(playerID) {
+  return (await getFriendsList(playerID)).map((f) => ({
     id: f.id,
     name: f.name,
     isOnline: activePlayers.has(f.id),
   }));
 }
 
-export function pingAllFriendsOnlineStatusHandler(playerID, isOnline) {
-  const dbPlayer = getPlayerByID(playerID);
+export async function pingAllFriendsOnlineStatusHandler(playerID, isOnline) {
+  const dbPlayer = await getPlayerByID(playerID);
   if (!dbPlayer) {
     console.log('pingAllFriendsOnlineStatusHandler: Player not found');
     return;
@@ -276,7 +276,7 @@ export function pingAllFriendsOnlineStatusHandler(playerID, isOnline) {
     type: MessageType.ResponseFriendOnlineStatus,
     friend: { id: dbPlayer.id, name: dbPlayer.username, isOnline },
   };
-  for (const f of getFriendsList(playerID)) {
+  for (const f of await getFriendsList(playerID)) {
     sendResponse(activePlayers.get(f.id), response);
   }
 }
@@ -285,18 +285,18 @@ export function pingAllFriendsOnlineStatusHandler(playerID, isOnline) {
 
 const MAX_PRIVATE_MESSAGE_LENGTH = 2000;
 
-export function sendPrivateMessageHandler(player, msg) {
+export async function sendPrivateMessageHandler(player, msg) {
   const content = typeof msg.content === 'string' ? msg.content.trim() : '';
   if (!content || content.length > MAX_PRIVATE_MESSAGE_LENGTH) {
     sendErrorToPlayer(player, 'Invalid message');
     return;
   }
-  if (!areFriends(player.id, msg.friendID)) {
+  if (!(await areFriends(player.id, msg.friendID))) {
     sendErrorToPlayer(player, 'You can only message friends');
     return;
   }
 
-  const message = createPrivateMessage(player.id, msg.friendID, content);
+  const message = await createPrivateMessage(player.id, msg.friendID, content);
   stopPrivateTyping(player.id, msg.friendID);
 
   // Echo to the sender (confirms the stored message) and push live to the friend.
@@ -309,26 +309,26 @@ export function sendPrivateMessageHandler(player, msg) {
   });
 }
 
-export function getPrivateMessagesHandler(player, msg) {
-  if (!areFriends(player.id, msg.friendID)) {
+export async function getPrivateMessagesHandler(player, msg) {
+  if (!(await areFriends(player.id, msg.friendID))) {
     sendErrorToPlayer(player, 'You can only message friends');
     return;
   }
   sendResponse(player, {
     type: MessageType.ResponsePrivateMessages,
     friendID: msg.friendID,
-    messages: getPrivateMessages(player.id, msg.friendID),
+    messages: await getPrivateMessages(player.id, msg.friendID),
   });
 }
 
 const privateTypingTimers = new Map(); // "playerID:friendID" -> timeout
 
-export function privateTypingHandler(player, msg) {
+export async function privateTypingHandler(player, msg) {
   if (!msg.isTyping) {
     stopPrivateTyping(player.id, msg.friendID);
     return;
   }
-  if (!areFriends(player.id, msg.friendID)) return;
+  if (!(await areFriends(player.id, msg.friendID))) return;
 
   sendResponse(activePlayers.get(msg.friendID), {
     type: MessageType.ResponsePrivateTyping,

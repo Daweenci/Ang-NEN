@@ -1,6 +1,5 @@
 import { parse as parseCookies } from 'cookie';
 import { getAccessTokenTTL } from './jwt.js';
-import { REFRESH_TOKEN_TTL_DAYS } from './refreshTokenStore.js';
 
 // Both tokens live in HttpOnly cookies: page scripts can't read them.
 //  - access token (JWT, 15 min): sent with every request, including the
@@ -9,6 +8,7 @@ import { REFRESH_TOKEN_TTL_DAYS } from './refreshTokenStore.js';
 export const ACCESS_COOKIE = 'session';
 export const REFRESH_COOKIE = 'refresh';
 const REFRESH_COOKIE_PATH = '/auth';
+export const REFRESH_TOKEN_TTL_DAYS = 14;
 
 function baseOptions() {
   return {

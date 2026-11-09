@@ -1,9 +1,10 @@
 import crypto from 'node:crypto';
 import { db } from './db.js';
+import { REFRESH_TOKEN_TTL_DAYS } from './session.js';
 
+// Runs inside the database worker.
 // Sliding lifetime: every successful refresh issues a new token valid for
 // another 14 days, so active players stay logged in.
-export const REFRESH_TOKEN_TTL_DAYS = 14;
 const REFRESH_TTL_SQL = `+${REFRESH_TOKEN_TTL_DAYS} days`;
 
 // Two tabs may refresh with the same token at nearly the same time. A token

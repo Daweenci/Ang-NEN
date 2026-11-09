@@ -4,10 +4,10 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { initDB, closeDB } from './db.js';
+import { initDatabase, closeDatabase, deleteExpiredRefreshTokens } from './database.js';
+import { closePasswordWorkers } from './passwords.js';
 import { authRouter } from './auth.js';
 import { attachWebSocketServer } from './websocket.js';
-import { deleteExpiredRefreshTokens } from './refreshTokenStore.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -16,12 +16,17 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const CLIENT_DIST = path.resolve(__dirname, '../../client/dist');
 
-initDB();
+// Starts the database worker (workers/dbWorker.js) and waits until the schema is loaded
+await initDatabase();
 
 // Expired refresh tokens are of no use anymore; remove them now and hourly
-function cleanUpRefreshTokens() {
-  const removed = deleteExpiredRefreshTokens();
-  if (removed) console.log(`Removed ${removed} expired refresh tokens`);
+async function cleanUpRefreshTokens() {
+  try {
+    const removed = await deleteExpiredRefreshTokens();
+    if (removed) console.log(`Removed ${removed} expired refresh tokens`);
+  } catch (err) {
+    console.log(`Refresh token cleanup failed: ${err.message}`);
+  }
 }
 cleanUpRefreshTokens();
 setInterval(cleanUpRefreshTokens, 60 * 60 * 1000).unref();
@@ -52,9 +57,9 @@ server.listen(port, () => {
   console.log(`Server started on :${port}`);
 });
 
-function shutdown() {
+async function shutdown() {
   console.log('Shutting down ...');
-  closeDB();
+  await Promise.allSettled([closeDatabase(), closePasswordWorkers()]);
   process.exit(0);
 }
 process.on('SIGINT', shutdown);

@@ -1,8 +1,11 @@
 import { db } from './db.js';
 
+// Runs inside the database worker. Errors cross the thread boundary by name,
+// so callers check err.name === 'FriendRequestExistsError'.
 export class FriendRequestExistsError extends Error {
   constructor() {
     super('friend request already exists');
+    this.name = 'FriendRequestExistsError';
   }
 }
 

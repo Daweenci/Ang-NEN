@@ -27,7 +27,11 @@ server/
     handlers.js      Lobby-, Freundes-, Chat- und Einladungs-Logik
     broadcasting.js  Push an Lobby-Mitglieder / alle Clients
     state.js         In-Memory-Zustand (Lobbys, aktive Spieler, Einladungen)
-    db.js, playerStore.js, friendsStore.js, jwt.js, util.js
+    database.js      async DB-Zugriff (läuft im Datenbank-Worker)
+    passwords.js     bcrypt-Hashing (läuft im Passwort-Worker-Pool)
+    workers/         WorkerPool, dbWorker.js, passwordWorker.js (worker_threads)
+    db.js, playerStore.js, friendsStore.js  synchrone SQLite-Zugriffe, nur im Datenbank-Worker
+    jwt.js, util.js
 ```
 
 ## Setup
