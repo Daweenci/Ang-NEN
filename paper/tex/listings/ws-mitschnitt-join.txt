@@ -1,0 +1,4 @@
+    0 ms C->S {"type":"join_lobby","lobbyID":"6d614f..","password":""}
+    3 ms S->C {"type":"join_lobby_successful","lobby":{"id":"6d614f..","name":"Abe...}
+   14 ms S->C {"type":"lobby_updated","lobby":{"id":"6d614f..","name":"Abendrunde"...}
+   15 ms S->C {"type":"lobby_list","lobbies":[{"id":"6d614f..","name":"Abendrunde"...}

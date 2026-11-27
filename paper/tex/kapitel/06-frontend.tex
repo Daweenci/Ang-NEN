@@ -16,7 +16,7 @@ Die Oberfläche besteht aus drei Seiten und mehreren Komponenten:
   \item[\texttt{PrivateChat}] Panel unten links für private Nachrichten
 \end{description}
 
-Der Client verwendet keinen Router. Welche Seite angezeigt wird, steht im Feld \texttt{currentPage} des Stores. \texttt{App.tsx} wählt anhand dieses Werts die passende Seitenkomponente aus. Ein Seitenwechsel ist dadurch eine reine Zustandsänderung im Store, zum Beispiel nach dem Betreten einer Lobby. Er führt nie zu einem Neuladen der Seite.
+Der Client verwendet keinen Router. Welche Seite angezeigt wird, bestimmt das Feld \texttt{currentPage} im Store, und \texttt{App.tsx} rendert anhand dieses Werts die passende Seitenkomponente. Für einen Seitenwechsel setzt der Client nur diesen Wert neu, etwa wenn der Server den Beitritt zu einer Lobby bestätigt. React tauscht daraufhin die angezeigte Komponente aus, ohne dass der Browser eine neue Seite lädt.
 
 \texttt{Auth} sendet Benutzername und Passwort mit \texttt{fetch} an \texttt{/login} bzw.\ \texttt{/register}. Die Pfade sind relativ, weil Client und Server denselben Ursprung haben. Ist die Antwort erfolgreich, ruft \texttt{Auth} \texttt{connect()} auf. Die Tokens selbst kommen im Client-Code nicht vor: Der Browser speichert die Cookies aus der Antwort und sendet das Access-Token beim WebSocket-Handshake automatisch mit. Beim nächsten Aufruf der Seite versucht der Client sofort, die Verbindung aufzubauen. Ist das Access-Token abgelaufen, das Refresh-Token aber noch gültig, erneuert der Client die Sitzung automatisch (Abschnitt~\ref{sec:wsauth}). Der Nutzer gelangt so ohne erneute Anmeldung ins Hauptmenü.
 
@@ -27,6 +27,7 @@ Die gesamte Kommunikation mit dem Server ist im Hook \texttt{useWebSocket} gekap
 Die Verbindung selbst liegt in einer Ref (\texttt{useRef}), weil ihr Austausch kein erneutes Rendern auslösen soll. Listing~\ref{lst:connect} zeigt die Funktion \texttt{connect()}.
 
 \begin{lstlisting}[language=JavaScript, caption={Verbindungsaufbau in \texttt{useWebSocket.tsx} (gekürzt)}, label=lst:connect]
+// wss = WebSocket über TLS, analog zu https
 const wsUrl = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
 
 const connect = (afterRefresh = false) => {
@@ -60,9 +61,7 @@ const connect = (afterRefresh = false) => {
 };
 \end{lstlisting}
 
-Die \gls{url} der Verbindung wird aus dem aktuellen Ursprung der Seite gebildet, bei \texttt{https} mit dem Schema \texttt{wss}. Ist bereits eine Verbindung im Aufbau oder offen, wird keine zweite erzeugt. Lehnt der Server den Handshake ab, weil kein gültiges Access-Token vorliegt, wird die Verbindung geschlossen, ohne je geöffnet worden zu sein. Diesen Fall erkennt der Client an der Variable \texttt{opened}. Er ruft dann einmal \texttt{refreshSession()} auf, das eine Anfrage an \texttt{/auth/refresh} sendet. Bei Erfolg ruft er \texttt{connect(true)} auf. Der Parameter verhindert eine Endlosschleife: Scheitert auch der zweite Handshake oder die Erneuerung, zeigt der Client die Anmeldeseite ohne Fehlermeldung an. Schließt der Server eine offene Verbindung mit dem Code \texttt{4000}, wurde die Sitzung abgemeldet, und der Client kehrt ebenfalls zur Anmeldeseite zurück. Jeder Ereignis-Handler prüft zuerst, ob der Socket, zu dem er gehört, noch der aktuelle in \texttt{ws.current} ist. Wird eine Verbindung ersetzt, etwa durch den doppelten Aufruf des Effects im \texttt{StrictMode} (Abschnitt~\ref{sec:react}), ignorieren die Handler des alten Sockets alle weiteren Ereignisse. Ein \texttt{useEffect} ohne Abhängigkeiten ruft \texttt{connect()} beim ersten Rendern auf, um eine bestehende Sitzung fortzusetzen. Seine Aufräumfunktion entfernt alle Handler und schließt die Verbindung. Zusätzlich wird die Verbindung beim Ereignis \texttt{beforeunload}, also beim Schließen oder Verlassen der Seite, geschlossen. Bei der Abmeldung sendet \texttt{logout()} eine Anfrage an \texttt{/auth/logout}, damit der Server die Sitzung sperrt und die Cookies löscht. Anschließend schließt der Client die Verbindung und setzt den Store zurück.
-
-Einige Toasts enthalten Schaltflächen, etwa \enquote{Join} bei einer Einladung. Deren Klick-Handler werden beim Eintreffen der Nachricht erzeugt, aber erst später ausgeführt. Damit sie dann die aktuelle Version von \texttt{joinLobby} aufrufen, greifen sie über Refs (\texttt{joinLobbyRef}, \texttt{declineInviteRef}) auf die Funktion zu. Die Refs werden bei jedem Rendern aktualisiert.
+Die Variable \texttt{opened} unterscheidet, warum eine Verbindung endet. Lehnt der Server den Handshake ab, weil kein gültiges Access-Token vorliegt, wird \texttt{onclose} aufgerufen, ohne dass \texttt{onopen} je ausgeführt wurde. Der Client erneuert dann einmal die Sitzung über \texttt{/auth/refresh} und verbindet sich erneut. Scheitert auch das, zeigt er die Anmeldeseite. Schließt der Server dagegen eine bereits offene Verbindung mit dem Code \texttt{4000} (Abmeldung) oder \texttt{1008} (Anmeldung an einem anderen Gerät), kehrt der Client direkt zur Anmeldeseite zurück. Die Prüfung \texttt{ws.current !== socket} am Anfang jedes Handlers sorgt dafür, dass Ereignisse eines bereits ersetzten Sockets ignoriert werden.
 
 \section{Zustand-Store als Brücke zwischen Socket und Oberfläche}
 
@@ -98,7 +97,7 @@ const lobbies = useStore((state) => state.broadcastedLobbies);
   \draw[->, thick] ([yshift=0.25cm]hook.east) -- node[lbl, above, yshift=0.35cm] {\texttt{getState().setX()}} ([yshift=0.25cm]store.west);
   \draw[->, thick] ([yshift=0.25cm]store.east) -- node[lbl, above, yshift=0.35cm] {Selektor, Re-Rendering} ([yshift=0.25cm]comp.west);
   % ausgehend (unten)
-  \draw[->] ([yshift=-0.25cm]hook.west) -- node[lbl, below, yshift=-0.35cm] {\texttt{ws.send()}} ([yshift=-0.25cm]srv.east);
+  \draw[->] ([yshift=-0.25cm]hook.west) -- node[lbl, below, yshift=-0.35cm] {JSON-Nachricht über \texttt{sendMessage()}} ([yshift=-0.25cm]srv.east);
   \draw[->] (comp.south) -- ++(0,-1.2) -| node[lbl, pos=0.25, below] {Aufruf einer Hook-Funktion über Props (\texttt{joinLobby}, \texttt{sendLobbyChatMessage}, \ldots)} (hook.south);
 \end{tikzpicture}}
 \caption{Datenfluss im Client: eingehende Nachrichten (oben) und Nutzeraktionen (unten)}

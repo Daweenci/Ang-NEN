@@ -163,6 +163,15 @@
 \usepackage[most]{tcolorbox}
 \newtcolorbox{neu}{breakable, enhanced, colback=yellow!40, colframe=yellow!40, boxrule=0pt, arc=0pt, left=3pt, right=3pt, top=2pt, bottom=2pt}
 \newtcolorbox{offen}{breakable, enhanced, colback=yellow!40, colframe=orange!85!black, boxrule=1.2pt, arc=0pt, left=3pt, right=3pt, top=2pt, bottom=2pt, title={Noch klären}, fonttitle=\sffamily\small\bfseries, coltitle=black, colbacktitle=orange!45}
+% gruen = nach Feedback geaendert, gelb = noch nicht durchgesehen, ohne Box = abgenommen
+% nicht umbrechbare Varianten fuer Abbildungen (breakable in Gleitumgebungen verschiebt Bild und Beschriftung)
+\newtcolorbox{neufig}{enhanced, colback=yellow!40, colframe=yellow!40, boxrule=0pt, arc=0pt, left=3pt, right=3pt, top=2pt, bottom=2pt}
+\newtcolorbox{geaendertfig}{enhanced, colback=green!12, colframe=green!50!black, boxrule=1.2pt, arc=0pt, left=3pt, right=3pt, top=2pt, bottom=2pt, title={Geändert}, fonttitle=\sffamily\small\bfseries, coltitle=black, colbacktitle=green!30}
+\newtcolorbox{geaendert}{breakable, enhanced, colback=green!12, colframe=green!50!black, boxrule=1.2pt, arc=0pt, left=3pt, right=3pt, top=2pt, bottom=2pt, title={Geändert}, fonttitle=\sffamily\small\bfseries, coltitle=black, colbacktitle=green!30}
 \usepackage{soul}
 \sethlcolor{yellow!40}
 \newcommand{\neutext}[1]{\hl{#1}}
+
+% Beschriftung einheitlich zum Fliesstext ("Listing~\ref"), auch fuer Mitschnitte, die kein Quellcode sind
+\renewcommand{\hsmalistingcaption}{Listing}
+\renewcommand{\hsmalistings}{Listingverzeichnis}

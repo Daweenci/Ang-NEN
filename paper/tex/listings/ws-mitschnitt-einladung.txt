@@ -1,0 +1,2 @@
+ 2399 ms C->S {"type":"invite_to_lobby","lobbyID":"6d614f..","friendID":"a46120.."}
+ 2399 ms S->C {"type":"invite_sent","success":true,"message":"Invite sent"}

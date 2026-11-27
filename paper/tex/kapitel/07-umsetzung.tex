@@ -15,21 +15,21 @@ Echtzeit-Updates betreffen im System zwei Datenbestände: die Liste aller Lobbys
 
 Den Bereit-Status setzt ein Spieler über die Schaltfläche \enquote{Start Game}. Sie sendet \texttt{start\_game}, ein erneuter Klick sendet \texttt{cancel\_game}. Der Server trägt den Spieler in die Liste \texttt{gameStart} der Lobby ein bzw.\ entfernt ihn daraus und verteilt die Lobby an alle Mitglieder. Die Schaltfläche zeigt bei allen Mitgliedern an, wie viele Spieler bereit sind (z.\,B.\ \enquote{Start Game (1/4)}). Verlässt der letzte Spieler eine Lobby, löscht der Server sie, und sie verschwindet über \texttt{lobby\_list} aus allen Hauptmenüs.
 
-\paragraph{Nachweis.} Listing~\ref{lst:mitschnitt} zeigt die Nachrichten, die der Client von \texttt{david} beim Betreten der Lobby gesendet (\texttt{C->S}) und empfangen (\texttt{S->C}) hat, mit der Zeit relativ zur ersten Nachricht. Auf die Anfrage \texttt{join\_lobby} folgen innerhalb von 15\,ms die Bestätigung, die aktualisierte Lobby für alle Mitglieder und die neue Lobby-Liste für alle Clients. Dass die Lobby-Liste auch bei Clients ankommt, die an der Aktion nicht beteiligt sind, zeigt Abbildung~\ref{fig:einladung}: Im Hauptmenü von \texttt{lena} ist \texttt{david} bereits als Mitglied der \enquote{Abendrunde} aufgeführt (2/4), ohne dass die Seite neu geladen wurde.
+\paragraph{Nachweis.} Listing~\ref{lst:mitschnitt-join} zeigt die Nachrichten, die der Client von \texttt{david} beim Betreten der Lobby \enquote{Abendrunde} gesendet (\texttt{C->S}) und empfangen (\texttt{S->C}) hat, mit der Zeit relativ zur ersten Nachricht. Auf die Anfrage \texttt{join\_lobby} folgen innerhalb von 15\,ms die Bestätigung \texttt{join\_lobby\_successful}, die aktualisierte Lobby \texttt{lobby\_updated}, die alle Mitglieder erhalten, und die neue Lobby-Liste \texttt{lobby\_list}, die an alle verbundenen Clients geht. Dass diese Liste auch bei unbeteiligten Clients ankommt, zeigt der Nachweis in Abschnitt~\ref{sec:req-benachrichtigung}.
 
 \lstinputlisting[
-  caption={Mitschnitt der WebSocket-Nachrichten im Client von \texttt{david} (IDs und lange Nachrichten gekürzt)},
-  label=lst:mitschnitt,
+  caption={Betreten einer Lobby im Client von \texttt{david} (IDs und lange Nachrichten gekürzt)},
+  label=lst:mitschnitt-join,
   basicstyle=\scriptsize\ttfamily,
   numbers=none
-]{listings/ws-mitschnitt.txt}
+]{listings/ws-mitschnitt-join.txt}
 
 \section{Live-Benachrichtigungen bei neuen Einträgen}
 \label{sec:req-benachrichtigung}
 
 Das System benachrichtigt einen Spieler in vier Fällen sofort: bei einer neuen Freundschaftsanfrage, einer Einladung in eine Lobby, einer Änderung des Online-Status eines Freundes und einer neuen privaten Nachricht.
 
-\paragraph{Freundschaftsanfragen.} Abbildung~\ref{fig:seq-freund} zeigt den Ablauf. Der Server speichert die Anfrage in der Datenbank und bestätigt sie dem Absender. Ist der Empfänger online, erhält er sofort \texttt{friend\_request\_received}. Der Client fügt die Anfrage dem Store hinzu und zeigt einen Toast mit den Schaltflächen \enquote{Accept} und \enquote{Decline}. Dieser Toast bleibt sichtbar, bis der Nutzer reagiert. Nimmt der Empfänger an, legt der Server die Freundschaft an und schickt beiden Seiten die aktualisierten Listen. Ist der Empfänger offline, liegt die Anfrage in der Datenbank und wird bei der nächsten Anmeldung mit der \texttt{welcome}-Nachricht übertragen.
+\paragraph{Freundschaftsanfragen.} Abbildung~\ref{fig:seq-freund} zeigt den Ablauf. Der Server speichert die Anfrage in der Datenbank und bestätigt sie dem Absender. Ist der Empfänger online, erhält er sofort \texttt{friend\_request\_received}. Der Client fügt die Anfrage dem Store hinzu und zeigt einen Toast mit den Schaltflächen \enquote{Accept} und \enquote{Decline}. Der Toast verschwindet nach vier Sekunden. Die Anfrage bleibt aber im Profilmenü erhalten und kann dort weiterhin angenommen oder abgelehnt werden. Nimmt der Empfänger an, legt der Server die Freundschaft an und schickt beiden Seiten die aktualisierten Listen. Ist der Empfänger offline, liegt die Anfrage in der Datenbank und wird bei der nächsten Anmeldung mit der \texttt{welcome}-Nachricht übertragen.
 
 \begin{figure}[ht]
 \centering
@@ -57,12 +57,20 @@ Das System benachrichtigt einen Spieler in vier Fällen sofort: bei einer neuen 
 \end{figure}
 
 \paragraph{Einladungen.} Ein Spieler in einer Lobby kann über \enquote{Invite} einen Freund einladen, der online ist. Der Server prüft, ob die Lobby noch Platz hat, ob der Freund bereits Mitglied ist und ob schon eine Einladung besteht. Anschließend vermerkt er die Einladung in \texttt{pendingInvites} und sendet dem Freund \texttt{invite\_received} mit dem Namen der Lobby und des Einladenden. Der Client zeigt einen Toast mit \enquote{Join} und \enquote{Decline} (Abbildung~\ref{fig:einladung}) und erhöht den Zähler am Profilsymbol. Mit einer gültigen Einladung kann der Spieler auch eine passwortgeschützte Lobby ohne Passwort betreten.
+Wie bei einer Freundschaftsanfrage verschwindet dieser Toast nach vier Sekunden. Die Einladung bleibt aber im Profilmenü unter \enquote{Invites} erhalten und kann dort weiterhin angenommen oder abgelehnt werden. Der Server hält offene Einladungen nur im Arbeitsspeicher. Trennt der eingeladene Spieler seine Verbindung, verfallen sie.
 
 \paragraph{Online-Status.} Nach der Authentifizierung und beim Schließen einer Verbindung ruft der Server \texttt{pingAllFriendsOnlineStatusHandler()} auf. Die Funktion liest die Freundesliste des Spielers aus der Datenbank und sendet jedem Freund, der online ist, \texttt{friend\_online\_status}. Der Client aktualisiert den Status des Freundes im Store. Dadurch ändert sich der Punkt in der Freundesliste (Abbildung~\ref{fig:freunde}), und es erscheint ein Hinweis wie \enquote{selim is now online}.
 
-\paragraph{Private Nachrichten.} Kommt eine private Nachricht an, während der Chat mit diesem Freund nicht geöffnet ist, zeigt der Client einen Toast mit Absender und Text. Außerdem erhöht er den Ungelesen-Zähler des Freundes und die Gesamtzahl an der Chat-Schaltfläche. In Abbildung~\ref{fig:privatchat} sind beide Zähler für die Nachricht von \texttt{tom} zu sehen, unten rechts der Toast für die Nachricht von \texttt{selim}.
+\paragraph{Private Nachrichten.} Kommt eine private Nachricht an, während der Chat mit diesem Freund nicht geöffnet ist, zeigt der Client einen Toast mit Absender und Text. Außerdem erhöht er den Ungelesen-Zähler des Freundes und die Gesamtzahl an der Chat-Schaltfläche.
 
-\paragraph{Nachweis.} Abbildung~\ref{fig:einladung} zeigt den Client von \texttt{lena}, unmittelbar nachdem \texttt{david} sie in die Lobby eingeladen hat. Der Toast erscheint unten rechts, der Zähler am Profilsymbol steht auf 1. Im Mitschnitt (Listing~\ref{lst:mitschnitt}) ist auf der Seite von \texttt{david} die zugehörige Anfrage \texttt{invite\_to\_lobby} mit der Bestätigung \texttt{invite\_sent} zu sehen.
+\paragraph{Nachweis.} Abbildung~\ref{fig:einladung} zeigt den Client von \texttt{lena}, unmittelbar nachdem \texttt{david} sie in die Lobby eingeladen hat. Der Toast erscheint unten rechts, der Zähler am Profilsymbol steht auf 1. Listing~\ref{lst:mitschnitt-einladung} zeigt auf der Seite von \texttt{david} die zugehörige Anfrage \texttt{invite\_to\_lobby} und die Bestätigung \texttt{invite\_sent}. Im Hauptmenü von \texttt{lena} ist außerdem \texttt{david} bereits als Mitglied der \enquote{Abendrunde} aufgeführt (2/4). Die Lobby-Liste aus Abschnitt~\ref{sec:req-echtzeit} ist also auch bei einem Client angekommen, der am Beitritt nicht beteiligt war, ohne dass dessen Seite neu geladen wurde.
+
+\lstinputlisting[
+  caption={Einladung im Client von \texttt{david}, Zeit relativ zu \texttt{join\_lobby} (IDs gekürzt)},
+  label=lst:mitschnitt-einladung,
+  basicstyle=\scriptsize\ttfamily,
+  numbers=none
+]{listings/ws-mitschnitt-einladung.txt}
 
 \begin{figure}[ht]
   \centering
@@ -101,11 +109,23 @@ function stopTyping(playerID, lobby) {
 }
 \end{lstlisting}
 
-\paragraph{Privater Chat.} Private Nachrichten sind nur zwischen Freunden erlaubt und auf 2000 Zeichen begrenzt. Der Server speichert die Nachricht in der Datenbank und erhält dabei ihre ID und den Zeitstempel. Dann sendet er sie mit \texttt{private\_message} an beide Beteiligten. Das Feld \texttt{friendID} bezeichnet dabei jeweils die andere Person. Da der Absender seine Nachricht als Echo vom Server erhält, prüft der Client anhand der ID, ob die Nachricht bereits im Verlauf steht, und verwirft Duplikate. Beim Verbindungsaufbau fordert der Client für jeden Freund den gespeicherten Verlauf an (\texttt{get\_private\_messages}), sodass Vorschau und Zähler sofort zur Verfügung stehen.
+\paragraph{Privater Chat.} Private Nachrichten sind nur zwischen Freunden erlaubt und auf 2000 Zeichen begrenzt. Der Server speichert die Nachricht in der Datenbank und erhält dabei ihre ID und den Zeitstempel. Dann sendet er sie mit \texttt{private\_message} an beide Beteiligten. Das Feld \texttt{friendID} bezeichnet dabei jeweils die andere Person. Da der Absender seine Nachricht als Echo vom Server erhält, prüft der Client anhand der ID, ob die Nachricht bereits im Verlauf steht, und verwirft Duplikate.
+Beim Verbindungsaufbau fordert der Client für jeden Freund den gespeicherten Verlauf an (\texttt{get\_private\_messages}). Daraus zeigt das Chat-Panel unter jedem Freund die letzte Nachricht als Vorschau und daneben die Zahl der ungelesenen Nachrichten (Abbildung~\ref{fig:privatchat}). Als ungelesen zählen alle empfangenen Nachrichten, die neuer sind als die zuletzt gelesene. Deren ID speichert der Client im \texttt{localStorage} (Kapitel~\ref{kap:frontend}). Hat ein Freund geschrieben, während der Spieler offline war, erscheinen diese Nachrichten nach der Anmeldung deshalb als ungelesen.
 
 \paragraph{Gemeinsamer Bereit-Status.} Der Bereit-Status ist ein Teil des Lobby-Zustands, den alle Mitglieder gleichzeitig verändern können. Jeder Spieler kann nur seinen eigenen Eintrag setzen oder entfernen, und der Server verarbeitet die Änderungen nacheinander. Das Ergebnis erhalten alle Mitglieder mit \texttt{lobby\_updated} (Abschnitt~\ref{sec:req-echtzeit}). Gleichzeitige Änderungen können sich nicht widersprechen, weil jeder Spieler nur seinen eigenen Eintrag verändert.
 
-\paragraph{Nachweis.} Abbildung~\ref{fig:lobby} zeigt die Lobby-Ansicht von \texttt{david}. Links stehen die drei Mitglieder und die Schaltfläche mit dem Bereit-Status, da \texttt{selim} bereit ist (1/4). Rechts ist der Chatverlauf mit den Nachrichten von \texttt{selim} und \texttt{david} zu sehen, darunter die Anzeige \enquote{lena is typing\ldots}, während \texttt{lena} in ihrem Fenster schreibt. Unten rechts erscheint der Hinweis, dass \texttt{lena} beigetreten ist. Abbildung~\ref{fig:privatchat} zeigt den privaten Chat von \texttt{david} mit \texttt{selim}: die empfangene Nachricht und die Anzeige \enquote{selim is typing\ldots}. Im Mitschnitt (Listing~\ref{lst:mitschnitt}) folgt auf die Chatnachricht von \texttt{selim} genau eine Meldung \texttt{player\_typing} mit \texttt{isTyping: false}.
+\paragraph{Nachweis.} Abbildung~\ref{fig:lobby} zeigt die Lobby-Ansicht von \texttt{david}. Links stehen die drei Mitglieder und die Schaltfläche mit dem Bereit-Status, da \texttt{selim} bereit ist (1/4). Rechts ist der Chatverlauf mit den Nachrichten von \texttt{selim} und \texttt{david} zu sehen, darunter die Anzeige \enquote{lena is typing\ldots}, während \texttt{lena} in ihrem Fenster schreibt. Unten rechts erscheint der Hinweis, dass \texttt{lena} beigetreten ist.
+
+Listing~\ref{lst:mitschnitt-chat} zeigt denselben Chat als Nachrichten im Client von \texttt{david}. \texttt{selim} beginnt zu tippen und schickt seine Nachricht. Danach folgt genau eine Meldung \texttt{player\_typing} mit \texttt{isTyping: false}. Anschließend tippt \texttt{david} selbst, sendet seine Nachricht und erhält sie als \texttt{lobby\_chat\_message} vom Server zurück.
+
+Abbildung~\ref{fig:privatchat} zeigt den privaten Chat von \texttt{david} mit \texttt{selim}: die empfangene Nachricht und die Anzeige \enquote{selim is typing\ldots}. Dort sind auch die Benachrichtigungen aus Abschnitt~\ref{sec:req-benachrichtigung} zu sehen: der Ungelesen-Zähler für die Nachricht von \texttt{tom} und unten rechts der Toast für die Nachricht von \texttt{selim}.
+
+\lstinputlisting[
+  caption={Lobby-Chat und Tipp-Anzeige im Client von \texttt{david}, Zeit relativ zu \texttt{join\_lobby} (IDs und lange Nachrichten gekürzt)},
+  label=lst:mitschnitt-chat,
+  basicstyle=\scriptsize\ttfamily,
+  numbers=none
+]{listings/ws-mitschnitt-chat.txt}
 
 \begin{figure}[ht]
   \centering

@@ -1,0 +1,7 @@
+  618 ms S->C {"type":"player_typing","playerName":"selim","isTyping":true}
+  640 ms S->C {"type":"lobby_chat_message","senderName":"selim","content":"Hi Da...}
+  642 ms S->C {"type":"player_typing","playerName":"selim","isTyping":false}
+  960 ms C->S {"type":"started_typing","lobbyID":"6d614f..","isTyping":true}
+  983 ms C->S {"type":"send_lobby_chat_message","lobbyID":"6d614f..","content":"Ic...}
+  983 ms C->S {"type":"started_typing","lobbyID":"6d614f..","isTyping":false}
+  983 ms S->C {"type":"lobby_chat_message","senderName":"david","content":"Ich l...}

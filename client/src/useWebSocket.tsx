@@ -211,7 +211,7 @@ export function useWebSocket() {
                 </div>
               </div>
             ),
-            { id: toastID, duration: Infinity }
+            { id: toastID, duration: 4000 }
           );
           break;
         }
