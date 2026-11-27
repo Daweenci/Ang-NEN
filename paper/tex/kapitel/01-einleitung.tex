@@ -1,0 +1,46 @@
+\chapter{Einleitung}
+\label{kap:einleitung}
+\verfasser{\autorDG{} und \autorSE}
+
+\section{Zielsetzung}
+
+Webanwendungen zeigen heute häufig Daten an, die sich ändern, während die Seite geöffnet ist: neue Chatnachrichten, Statusänderungen anderer Nutzer oder Einträge in gemeinsam genutzten Listen. Das klassische Kommunikationsmodell des Webs, bei dem der Browser eine Anfrage stellt und der Server antwortet, sieht nicht vor, dass der Server von sich aus Daten an den Client sendet \X[Fielding/RFC 9110 zu HTTP]. Das WebSocket-Protokoll schließt diese Lücke, indem es eine dauerhafte, bidirektionale Verbindung zwischen Browser und Server bereitstellt \X[RFC 6455].
+
+Ziel dieser Arbeit ist es, am Beispiel einer selbst entwickelten Anwendung zu zeigen, wie die folgenden vier Anforderungen mit WebSockets in einer Webanwendung aus React-Frontend und Express-Backend umgesetzt werden können:
+
+\begin{itemize}
+  \item Echtzeit-Updates von Daten,
+  \item Live-Benachrichtigungen bei neuen Einträgen,
+  \item kollaboratives Bearbeiten von Inhalten,
+  \item Live-Datenaktualisierung ohne Seitenneuladen.
+\end{itemize}
+
+Als Demonstrationsanwendung dient eine webbasierte Spiellobby, in der sich Spieler anmelden, Lobbys erstellen und betreten, miteinander chatten, Freunde hinzufügen und sich gegenseitig einladen können. Der Schwerpunkt liegt nicht auf dem Spiel selbst, sondern auf der Echtzeitkommunikation zwischen den Clients und dem Server. Betrachtet werden dabei beide Seiten des Systems: die Verarbeitung und Verteilung der Nachrichten im Backend sowie deren Einbindung in die Benutzeroberfläche im Frontend. Der vollständige Quellcode ist öffentlich verfügbar.\footnote{\url{https://github.com/Daweenci/Ang-NEN}}
+
+\section{Aufbau der Arbeit und Aufgabenteilung}
+
+Kapitel~\ref{kap:grundlagen} beschreibt die technischen Grundlagen: die Grenzen von \gls{http}, die verfügbaren Verfahren für Echtzeitkommunikation im Web, das WebSocket-Protokoll sowie die eingesetzten Technologien Node.js, Express, React und Zustand. Kapitel~\ref{kap:aufgabe} stellt die Aufgabenstellung und die Demonstrationsanwendung vor und ordnet die vier Anforderungen konkreten Funktionen zu. Kapitel~\ref{kap:architektur} beschreibt die Architektur des Systems, Kapitel~\ref{kap:backend} die Implementierung des Backends und Kapitel~\ref{kap:frontend} die des Frontends. In Kapitel~\ref{kap:umsetzung} wird für jede Anforderung der Ablauf durch das gesamte System beschrieben und anhand von Screenshots und mitgeschnittenen Nachrichten nachgewiesen. Kapitel~\ref{kap:diskussion} ordnet die Ergebnisse ein und benennt Limitationen, Kapitel~\ref{kap:fazit} fasst die Arbeit zusammen.
+
+Die Arbeit wurde von zwei Autoren verfasst. Tabelle~\ref{tab:aufteilung} zeigt, welches Kapitel von wem stammt. Zusätzlich ist unter jeder Kapitelüberschrift der jeweilige Verfasser angegeben.
+
+\begin{table}[ht]
+  \centering
+  \caption{Aufgabenteilung zwischen den Autoren}
+  \label{tab:aufteilung}
+  \sffamily\small
+  \begin{tabular}{p{0.7\linewidth}l}
+    \toprule
+    \textbf{Kapitel} & \textbf{Verfasst von} \\
+    \midrule
+    \ref{kap:einleitung} Einleitung & beide \\
+    \ref{kap:grundlagen} Theoretischer Hintergrund & \autorSE \\
+    \ref{kap:aufgabe} Aufgabenstellung und Demonstrationsanwendung & \autorDG \\
+    \ref{kap:architektur} Systemarchitektur & \autorDG \\
+    \ref{kap:backend} Backend-Implementierung & \autorSE \\
+    \ref{kap:frontend} Frontend-Implementierung & \autorDG \\
+    \ref{kap:umsetzung} Umsetzung und Nachweis der Anforderungen & \autorDG \\
+    \ref{kap:diskussion} Diskussion & \autorSE \\
+    \ref{kap:fazit} Fazit und Ausblick & \autorSE \\
+    \bottomrule
+  \end{tabular}
+\end{table}

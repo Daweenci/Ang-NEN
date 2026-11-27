@@ -1,0 +1,84 @@
+\chapter{WebSocket-Nachrichtenprotokoll}
+\label{anh:protokoll}
+
+Tabelle~\ref{tab:protokoll-req} listet die Nachrichten vom Client an den Server, Tabelle~\ref{tab:protokoll-resp} die Nachrichten vom Server an den Client. Die Typen \texttt{login}, \texttt{register}, \texttt{login\_successful}, \texttt{login\_failed}, \texttt{register\_successful} und \texttt{register\_failed} sind ebenfalls definiert, werden aber nur als \texttt{type}-Feld in den Antworten der \gls{rest}-Endpunkte verwendet. Eine Nachricht zur Anmeldung gibt es nicht, da die Authentifizierung über das Access-Token beim Handshake erfolgt. Tabelle~\ref{tab:rest} listet die \gls{rest}-Endpunkte.
+
+{\sffamily\footnotesize
+\begin{longtable}{p{0.25\linewidth}p{0.68\linewidth}}
+  \caption{REST-Endpunkte}\label{tab:rest}\\
+  \toprule
+  \textbf{Endpunkt} & \textbf{Bedeutung} \\
+  \midrule
+  \texttt{POST /register} & Konto anlegen, Sitzung starten; setzt \texttt{session} und \texttt{refresh} (201) \\
+  \texttt{POST /login} & Anmelden, Sitzung starten; setzt \texttt{session} und \texttt{refresh} (200, bei falschen Daten 401) \\
+  \texttt{POST /auth/refresh} & Refresh-Token rotieren, neues Access-Token; 200 oder 401 \\
+  \texttt{POST /auth/logout} & Sitzung sperren, ihre Verbindung schließen (Code 4000), Cookies löschen (204) \\
+  \bottomrule
+\end{longtable}
+}
+
+{\sffamily\footnotesize
+\begin{longtable}{p{0.33\linewidth}p{0.6\linewidth}}
+  \caption{Nachrichten vom Client an den Server}\label{tab:protokoll-req}\\
+  \toprule
+  \textbf{Typ und Felder} & \textbf{Bedeutung} \\
+  \midrule
+  \endfirsthead
+  \toprule
+  \textbf{Typ und Felder} & \textbf{Bedeutung} \\
+  \midrule
+  \endhead
+  \texttt{create\_lobby} \newline \texttt{lobbyName, maxPlayers, isPrivate, password} & Neue Lobby erstellen; der Ersteller wird erstes Mitglied \\
+  \texttt{join\_lobby} \newline \texttt{lobbyID, password} & Lobby betreten; Passwort entfällt bei vorliegender Einladung \\
+  \texttt{leave\_lobby} \newline \texttt{lobbyID} & Lobby verlassen \\
+  \texttt{start\_game} \newline \texttt{lobbyID} & Eigenen Bereit-Status setzen \\
+  \texttt{cancel\_game} \newline \texttt{lobbyID} & Eigenen Bereit-Status entfernen \\
+  \texttt{send\_lobby\_chat\_message} \newline \texttt{lobbyID, content} & Nachricht in den Lobby-Chat schreiben \\
+  \texttt{started\_typing} \newline \texttt{lobbyID, isTyping} & Beginn bzw.\ Ende des Tippens im Lobby-Chat \\
+  \texttt{add\_friend} \newline \texttt{friendName} & Freundschaftsanfrage an einen Spieler senden \\
+  \texttt{accept\_friend\_request} \newline \texttt{friendID, acceptRequest} & Freundschaftsanfrage annehmen oder ablehnen \\
+  \texttt{remove\_friend} \newline \texttt{friendID} & Freundschaft beenden; der private Chat wird gelöscht \\
+  \texttt{invite\_to\_lobby} \newline \texttt{lobbyID, friendID} & Freund in die Lobby einladen \\
+  \texttt{decline\_invite} \newline \texttt{lobbyID} & Einladung ablehnen \\
+  \texttt{send\_private\_message} \newline \texttt{friendID, content} & Private Nachricht an einen Freund (max.\ 2000 Zeichen) \\
+  \texttt{get\_private\_messages} \newline \texttt{friendID} & Gespeicherten Verlauf mit einem Freund anfordern \\
+  \texttt{private\_typing} \newline \texttt{friendID, isTyping} & Beginn bzw.\ Ende des Tippens im privaten Chat \\
+  \bottomrule
+\end{longtable}
+
+\begin{longtable}{p{0.33\linewidth}p{0.6\linewidth}}
+  \caption{Nachrichten vom Server an den Client}\label{tab:protokoll-resp}\\
+  \toprule
+  \textbf{Typ und Felder} & \textbf{Bedeutung und Empfänger} \\
+  \midrule
+  \endfirsthead
+  \toprule
+  \textbf{Typ und Felder} & \textbf{Bedeutung und Empfänger} \\
+  \midrule
+  \endhead
+  \texttt{welcome} \newline \texttt{player, message, lobbies, pendingFriendRequests, friendsList} & Anfangszustand, direkt nach dem Verbindungsaufbau \\
+  \texttt{lobby\_list} \newline \texttt{lobbies} & Vollständige Lobby-Liste; an alle verbundenen Clients \\
+  \texttt{lobby\_created} \newline \texttt{lobby} & Bestätigung an den Ersteller \\
+  \texttt{lobby\_updated} \newline \texttt{lobby} & Geänderter Lobby-Zustand; an alle Mitglieder \\
+  \texttt{join\_lobby\_successful} \newline \texttt{lobby, chatHistory} & Bestätigung an den Beitretenden mit Chatverlauf \\
+  \texttt{join\_lobby\_failed} \newline \texttt{message} & Beitritt abgelehnt (Passwort falsch, Lobby voll) \\
+  \texttt{lobby\_left} & Bestätigung des Verlassens \\
+  \texttt{lobby\_chat\_message} \newline \texttt{lobbyID, senderID, senderName, content} & Neue Chatnachricht; an alle Mitglieder \\
+  \texttt{player\_typing} \newline \texttt{playerID, playerName, isTyping} & Tipp-Status; an alle Mitglieder außer dem Tippenden \\
+  \texttt{friend\_request\_sent} \newline \texttt{success, message} & Ergebnis einer Freundschaftsanfrage an den Absender \\
+  \texttt{friend\_request\_received} \newline \texttt{player} & Neue Freundschaftsanfrage an den Empfänger \\
+  \texttt{pending\_friend\_requests} \newline \texttt{pendingFriendRequests} & Aktuelle Liste offener Anfragen \\
+  \texttt{friend\_request\_accepted} \newline \texttt{friend} & Anfrage wurde angenommen; an den ursprünglichen Absender \\
+  \texttt{friends\_list} \newline \texttt{friendsList} & Aktuelle Freundesliste mit Online-Status \\
+  \texttt{friend\_removed} \newline \texttt{friendID} & Bestätigung an den Spieler, der die Freundschaft beendet hat \\
+  \texttt{friend\_online\_status} \newline \texttt{friend} & Ein Freund ist online bzw.\ offline gegangen \\
+  \texttt{invite\_received} \newline \texttt{lobbyID, lobbyName, inviterID, inviterName} & Einladung an den eingeladenen Freund \\
+  \texttt{invite\_sent} \newline \texttt{success, message} & Ergebnis einer Einladung an den Einladenden \\
+  \texttt{invite\_declined} \newline \texttt{lobbyID} & Bestätigung der Ablehnung \\
+  \texttt{private\_message} \newline \texttt{friendID, message} & Neue private Nachricht; an Absender und Empfänger \\
+  \texttt{private\_messages} \newline \texttt{friendID, messages} & Gespeicherter Verlauf eines privaten Chats \\
+  \texttt{private\_typing\_status} \newline \texttt{friendID, isTyping} & Tipp-Status im privaten Chat \\
+  \texttt{error} \newline \texttt{error} & Fehlermeldung \\
+  \bottomrule
+\end{longtable}
+}

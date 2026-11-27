@@ -1,0 +1,42 @@
+\chapter{Diskussion}
+\label{kap:diskussion}
+\verfasser{\autorSE}
+
+\section{Interpretation und Einordnung}
+\label{sec:einordnung}
+
+Die vier Anforderungen ließen sich mit einer einzigen WebSocket-Verbindung je Client und einem \gls{json}-Protokoll mit einem \texttt{type}-Feld umsetzen. Neben Login und Registrierung über \gls{rest} benötigt der Client nach dem Laden der Seite keine weiteren \gls{http}-Anfragen (Abbildung~\ref{fig:devtools-messages}). Im lokalen Test kamen die Antworten und Verteilungen des Servers innerhalb weniger Millisekunden an (Listing~\ref{lst:mitschnitt}). Diese Werte sagen wenig über den Betrieb über ein reales Netzwerk aus, zeigen aber, dass der Server selbst kaum Verzögerung hinzufügt.
+
+Im Frontend hat sich die Aufteilung in einen Hook für die Verbindung und einen externen Store für die Daten bewährt. Der Hook kapselt den imperativen Teil: Verbindungsaufbau, Ereignis-Handler und das Senden von Nachrichten. Die Komponenten bleiben deklarativ und lesen nur Daten aus dem Store. Durch \texttt{getState()} entfällt das Problem veralteter Closures, und durch Selektoren werden nur die betroffenen Komponenten neu gerendert. Die Prüfung \texttt{ws.current !== socket} sorgt dafür, dass der doppelte Effect-Aufruf im \texttt{StrictMode} keine verwaisten Verbindungen hinterlässt.
+
+Im Backend hält das Single-Thread-Modell von Node.js den Code einfach, da der Zustand im Speicher ohne Sperren verändert werden kann. Langsame synchrone Arbeit wie das Hashen von Passwörtern und die SQLite-Zugriffe würde diesen Thread jedoch blockieren. Durch die Auslagerung in Worker Threads bleibt der Server auch bei vielen gleichzeitigen Anmeldungen reaktionsfähig.
+Der serverautoritative Ansatz verhindert widersprüchliche Zustände: Clients zeigen Änderungen erst an, wenn der Server sie bestätigt und verteilt hat, und der Server legt die Reihenfolge fest.
+
+Die Authentifizierung findet vollständig beim Handshake statt. Danach ist die Spieler-Identität fest an die Verbindung gebunden. Das vereinfacht die Handler: Keiner von ihnen muss prüfen, ob ein Spieler angemeldet ist oder ob eine mitgeschickte ID zum Absender gehört. Da die Tokens in \texttt{HttpOnly}-Cookies liegen und der Server den Ursprung prüft, sind sie zugleich vor dem Auslesen durch Skripte und vor der Verwendung durch fremde Seiten geschützt. Die Kombination aus kurzlebigem Access-Token und rotiertem Refresh-Token macht Sitzungen widerrufbar, ohne dass sich aktive Nutzer neu anmelden müssen. Dass das Access-Token nur beim Handshake geprüft wird, hält die Verbindung stabil, erfordert aber, dass der Server bei der Abmeldung die Verbindung selbst schließt.
+
+\section{Limitationen}
+\label{sec:limitationen}
+
+Die Implementierung ist ein Prototyp und weist mehrere Einschränkungen auf, die für einen produktiven Einsatz behoben werden müssten.
+
+\paragraph{Keine Wiederverbindung.} Bricht die Verbindung ab, etwa durch einen Netzwerkwechsel, baut der Client sie nicht automatisch wieder auf. Der Nutzer muss die Seite neu laden. Außerdem werden keine Ping- und Pong-Frames verwendet, um unbemerkt abgebrochene Verbindungen zu erkennen \X[RFC 6455, Abschnitt 5.5.2].
+
+\paragraph{Eine Server-Instanz.} Lobbys, verbundene Spieler und Einladungen liegen im Speicher eines einzelnen Prozesses. Mehrere Server-Instanzen hinter einem Load Balancer würden jeweils nur ihre eigenen Clients kennen. Für eine horizontale Skalierung müssten Zustand und Broadcasts über einen gemeinsamen Dienst laufen, etwa einen Publish-Subscribe-Mechanismus wie Redis \X[Quelle zu Redis Pub/Sub bzw. Skalierung von WebSockets]. Beim Neustart des Servers gehen alle Lobbys einschließlich ihres Chatverlaufs verloren.
+
+\paragraph{Vollständige Listen statt Änderungen.} Bei jeder Änderung an einer Lobby sendet der Server allen Clients die vollständige Lobby-Liste. Die Nachrichtengröße wächst damit mit der Zahl der Lobbys. Bei vielen Lobbys wäre es günstiger, nur die geänderte Lobby zu übertragen.
+
+\paragraph{Keine Validierung der Nachrichten.} Eingehende Nachrichten werden nicht gegen ein Schema geprüft. Die Handler greifen direkt auf die erwarteten Felder zu. Fehlende oder falsche Felder führen in einigen Fällen zu Ausnahmen, die zwar abgefangen werden, aber nur eine allgemeine Fehlermeldung erzeugen. Der Lobby-Chat ist zudem nicht in der Länge begrenzt.
+
+\paragraph{Sicherheit.} Cookies, Origin-Prüfung und Refresh-Tokens schützen die Sitzung (Abschnitt~\ref{sec:wsauth}). Einige Punkte bleiben offen:
+\begin{itemize}
+  \item Ein gestohlenes Access-Token kann bis zu seinem Ablauf, also höchstens 15 Minuten, für neue Verbindungen verwendet werden.
+  \item Eine Verbindung, die bereits offen ist, bleibt bestehen, bis sie geschlossen oder die Sitzung abgemeldet wird. Wird nur ein Refresh-Token wegen Wiederverwendung gesperrt, schließt der Server die offene Verbindung nicht.
+  \item Da die Gültigkeit des Refresh-Tokens bei jeder Erneuerung verlängert wird, gibt es für aktive Nutzer keine maximale Sitzungsdauer.
+  \item Die Anmeldung ist nicht gegen wiederholte Rateversuche begrenzt.
+  \item Lobby-Passwörter liegen im Klartext im Speicher.
+  \item Das Attribut \texttt{Secure} und die Verschlüsselung der Verbindung (\texttt{wss://}) setzen voraus, dass der Server im Produktionsbetrieb über \gls{tls} erreichbar ist. Die Konfiguration dafür ist nicht Teil der Anwendung.
+\end{itemize}
+
+\paragraph{Unterbrechbare Handler.} Abläufe aus mehreren Datenbankaufrufen, etwa das Prüfen und Anlegen einer Freundschaftsanfrage, sind nicht als Ganzes geschützt. Zwischen zwei Aufrufen kann ein Handler eines anderen Clients laufen. Die Constraints der Datenbank verhindern doppelte Einträge, eine einzelne Transaktion im Datenbank-Worker wäre aber sauberer.
+
+\paragraph{Umfang der Kollaboration.} Das kollaborative Bearbeiten ist als gemeinsamer Chat und gemeinsamer Bereit-Status umgesetzt. Das gleichzeitige Bearbeiten desselben Inhalts, etwa eines Textes, ist nicht vorgesehen. Dafür wären Verfahren wie \gls{ot} oder \glspl{crdt} nötig (Abschnitt~\ref{sec:kollab}).

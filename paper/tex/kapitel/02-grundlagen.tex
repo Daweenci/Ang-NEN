@@ -1,0 +1,163 @@
+\chapter{Theoretischer Hintergrund}
+\label{kap:grundlagen}
+\verfasser{\autorSE}
+
+\section{Grenzen des HTTP-Request-Response-Modells}
+\label{sec:http}
+
+\gls{http} ist ein zustandsloses Anfrage-Antwort-Protokoll: Der Client sendet eine Anfrage, der Server beantwortet sie, und damit ist der Austausch abgeschlossen \X[RFC 9110]. Die Initiative geht dabei immer vom Client aus. Der Server hat innerhalb dieses Modells keine Möglichkeit, einem Client mitzuteilen, dass sich Daten geändert haben, solange der Client nicht danach fragt.
+
+Für Anwendungen, in denen mehrere Nutzer gleichzeitig mit denselben Daten arbeiten, ist das eine Einschränkung. Wenn ein Nutzer eine Lobby erstellt oder eine Nachricht schreibt, soll diese Änderung bei allen anderen betroffenen Nutzern sichtbar werden, ohne dass sie die Seite neu laden. Außerdem enthält jede \gls{http}-Anfrage vollständige Header, die bei häufigen kleinen Nachrichten einen großen Teil der übertragenen Datenmenge ausmachen können \X[Grigorik 2013].
+
+\section{Techniken für Echtzeitkommunikation im Web}
+\label{sec:techniken}
+
+Um trotz dieser Einschränkung Änderungen zeitnah an den Client zu übertragen, haben sich mehrere Verfahren etabliert. Abbildung~\ref{fig:verfahren} stellt ihren Ablauf gegenüber.
+
+\paragraph{Polling.} Der Client fragt in festen Abständen beim Server nach, ob neue Daten vorliegen. Das Verfahren ist einfach umzusetzen, erzeugt aber viele Anfragen ohne neuen Inhalt. Die Verzögerung, mit der eine Änderung beim Client ankommt, hängt vom gewählten Intervall ab \X[RFC 6202].
+
+\paragraph{Long Polling.} Der Client sendet eine Anfrage, die der Server erst beantwortet, sobald neue Daten vorliegen oder eine Zeitgrenze erreicht ist. Danach stellt der Client sofort die nächste Anfrage. Dadurch sinkt die Verzögerung, jedoch wird für jede Nachricht weiterhin eine vollständige \gls{http}-Anfrage benötigt \X[RFC 6202].
+
+\paragraph{Server-Sent Events.} Bei \gls{sse} hält der Server eine \gls{http}-Antwort offen und schreibt fortlaufend Ereignisse hinein. Der Browser stellt dafür die Schnittstelle \texttt{EventSource} bereit. Die Kommunikation ist nur in eine Richtung möglich: Nachrichten vom Client an den Server erfordern weiterhin separate \gls{http}-Anfragen \X[WHATWG HTML, Server-sent events].
+
+\paragraph{WebSockets.} Eine WebSocket-Verbindung wird einmalig über \gls{http} aufgebaut und anschließend auf ein eigenes Protokoll umgestellt. Danach können Client und Server jederzeit und unabhängig voneinander Nachrichten senden. Der zusätzliche Aufwand pro Nachricht beschränkt sich auf wenige Bytes Rahmeninformation \X[RFC 6455].
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[scale=0.95, font=\sffamily\scriptsize, >=Stealth,
+  ll/.style={black!40}, m/.style={->}, r/.style={->, dashed},
+  hd/.style={font=\sffamily\small\bfseries}]
+  \foreach \x/\t in {0/Polling, 4/Long Polling, 8/Server-Sent Events, 12/WebSocket} {
+    \node[hd] at (\x+1.2,0.6) {\t};
+    \node at (\x,0.15) {Client}; \node at (\x+2.4,0.15) {Server};
+    \draw[ll] (\x,0) -- (\x,-5); \draw[ll] (\x+2.4,0) -- (\x+2.4,-5);
+  }
+  % Polling
+  \foreach \y in {-0.4,-1.6,-2.8,-4.0} {
+    \draw[m] (0,\y) -- (2.4,\y-0.25);
+    \draw[r] (2.4,\y-0.35) -- (0,\y-0.6);
+  }
+  \node[fill=white, inner sep=1pt] at (1.2,-3.4) {neue Daten};
+  % Long polling
+  \draw[m] (4,-0.4) -- (6.4,-0.65);
+  \draw[r] (6.4,-2.0) -- node[above, sloped] {Daten} (4,-2.25);
+  \draw[m] (4,-2.35) -- (6.4,-2.6);
+  \draw[r] (6.4,-4.0) -- node[above, sloped] {Daten} (4,-4.25);
+  \draw[m] (4,-4.35) -- (6.4,-4.6);
+  % SSE
+  \draw[m] (8,-0.4) -- node[above, sloped] {GET} (10.4,-0.65);
+  \foreach \y in {-1.5,-2.6,-3.4,-4.4} \draw[r] (10.4,\y) -- (8,\y-0.25);
+  % WebSocket
+  \draw[m] (12,-0.4) -- node[above, sloped] {Upgrade} (14.4,-0.65);
+  \draw[r] (14.4,-0.9) -- node[above, sloped] {101} (12,-1.15);
+  \draw[<->, thick] (12,-1.8) -- (14.4,-1.8);
+  \draw[<-, thick] (12,-2.5) -- (14.4,-2.5);
+  \draw[->, thick] (12,-3.2) -- (14.4,-3.2);
+  \draw[<-, thick] (12,-3.9) -- (14.4,-3.9);
+  \draw[<-, thick] (12,-4.5) -- (14.4,-4.5);
+  \node[fill=white, inner sep=1pt, align=center] at (13.2,-2.85) {Nachrichten in\\beide Richtungen};
+\end{tikzpicture}
+\caption{Vergleich der Verfahren für Echtzeitkommunikation (durchgezogen: Anfrage bzw.\ Nachricht vom Client, gestrichelt: Antwort bzw.\ Nachricht vom Server)}
+\label{fig:verfahren}
+\end{figure}
+
+Tabelle~\ref{tab:verfahren} fasst die Eigenschaften zusammen. Für die Demonstrationsanwendung ist entscheidend, dass Nachrichten in beiden Richtungen häufig und in kurzen Abständen auftreten. Beispiele sind Tipp-Anzeigen, Chatnachrichten und Statusänderungen. Polling und Long Polling würden dafür viele vollständige \gls{http}-Anfragen erzeugen. \gls{sse} deckt nur die Richtung vom Server zum Client ab. WebSockets erfüllen beide Anforderungen mit einer einzigen Verbindung, weshalb sie im System verwendet werden.
+
+\begin{table}[ht]
+  \centering
+  \caption{Eigenschaften der Verfahren für Echtzeitkommunikation}
+  \label{tab:verfahren}
+  \sffamily\small
+  \begin{tabular}{lllll}
+    \toprule
+     & \textbf{Polling} & \textbf{Long Polling} & \textbf{SSE} & \textbf{WebSocket} \\
+    \midrule
+    Richtung & C $\rightarrow$ S & C $\rightarrow$ S & S $\rightarrow$ C & beide \\
+    Verbindung & je Anfrage & je Nachricht & dauerhaft & dauerhaft \\
+    Verzögerung & Intervall & gering & gering & gering \\
+    Overhead je Nachricht & HTTP-Header & HTTP-Header & gering & wenige Bytes \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Das WebSocket-Protokoll}
+\label{sec:websocket}
+
+Das WebSocket-Protokoll ist in RFC~6455 spezifiziert \X[RFC 6455]. Eine Verbindung beginnt mit dem sogenannten Opening Handshake, einer gewöhnlichen \gls{http}-\texttt{GET}-Anfrage mit zusätzlichen Headern (Listing~\ref{lst:handshake}). Mit \texttt{Upgrade: websocket} und \texttt{Connection: Upgrade} fordert der Client den Wechsel des Protokolls an. Der Header \texttt{Sec-WebSocket-Key} enthält einen zufälligen, Base64-kodierten Wert. Der Server antwortet mit dem Statuscode \texttt{101 Switching Protocols} und dem Header \texttt{Sec-WebSocket-Accept}. Dessen Wert ist der SHA-1-Hash aus dem Schlüssel des Clients und einer im Standard festgelegten Zeichenkette, ebenfalls Base64-kodiert. Damit bestätigt der Server, dass er das WebSocket-Protokoll versteht \X[RFC 6455, Abschnitt 4]. Der Handshake im laufenden System ist in Abbildung~\ref{fig:devtools-headers} zu sehen.
+
+\begin{lstlisting}[caption={Aufbau des Opening Handshakes (gekürzt)}, label=lst:handshake, numbers=none]
+GET /ws HTTP/1.1
+Host: localhost:4000
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
+Sec-WebSocket-Version: 13
+
+HTTP/1.1 101 Switching Protocols
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=
+\end{lstlisting}
+
+Nach dem Handshake wird dieselbe \gls{tcp}-Verbindung für den Austausch von Nachrichten verwendet. Nachrichten werden in Frames übertragen. Jeder Frame beginnt mit einem kurzen Kopf, der unter anderem einen Opcode enthält. Der Opcode unterscheidet Text- und Binärdaten sowie Steuerframes für Ping, Pong und das Schließen der Verbindung. Frames vom Client zum Server müssen mit einem zufälligen Schlüssel maskiert werden. Beim Schließen übermitteln beide Seiten einen Statuscode. Neben \texttt{1000} für ein normales Ende ist für diese Arbeit der Code \texttt{1008} (\enquote{Policy Violation}) relevant: Er zeigt an, dass eine Verbindung wegen eines Regelverstoßes beendet wurde \X[RFC 6455, Abschnitt 7.4]. Abbildung~\ref{fig:ws-ablauf} zeigt den Lebenszyklus einer Verbindung.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[font=\sffamily\scriptsize, >=Stealth,
+  head/.style={draw, rounded corners=2pt, fill=black!4, minimum width=2.4cm, minimum height=0.7cm, font=\sffamily\small},
+  every node/.append style={inner sep=1.5pt}]
+  \node[head] at (0,0) {Browser};
+  \node[head] at (8,0) {Server};
+  \draw[black!40] (0,-0.35) -- (0,-6.3);
+  \draw[black!40] (8,-0.35) -- (8,-6.3);
+  \draw[->] (0,-0.9) -- node[above, fill=white] {HTTP GET \texttt{/ws}, \texttt{Upgrade: websocket}, \texttt{Sec-WebSocket-Key}} (8,-0.9);
+  \draw[->, dashed] (8,-1.6) -- node[above, fill=white] {\texttt{101 Switching Protocols}, \texttt{Sec-WebSocket-Accept}} (0,-1.6);
+  \draw[decorate, decoration={brace, amplitude=4pt}] (-0.25,-1.75) -- (-0.25,-0.75) node[midway, left=5pt, align=right] {Opening\\Handshake};
+  \draw[->, thick] (0,-2.4) -- node[above, fill=white] {Text-Frame (maskiert)} (8,-2.4);
+  \draw[->, thick] (8,-3.1) -- node[above, fill=white] {Text-Frame} (0,-3.1);
+  \draw[->, thick] (8,-3.8) -- node[above, fill=white] {Text-Frame} (0,-3.8);
+  \draw[->, thick] (0,-4.5) -- node[above, fill=white] {Text-Frame (maskiert)} (8,-4.5);
+  \draw[decorate, decoration={brace, amplitude=4pt}] (-0.25,-4.65) -- (-0.25,-2.25) node[midway, left=5pt, align=right] {Datenaustausch\\in beide\\Richtungen};
+  \draw[->] (8,-5.3) -- node[above, fill=white] {Close-Frame mit Statuscode} (0,-5.3);
+  \draw[->] (0,-6.0) -- node[above, fill=white] {Close-Frame (Bestätigung)} (8,-6.0);
+  \draw[decorate, decoration={brace, amplitude=4pt}] (-0.25,-6.15) -- (-0.25,-5.15) node[midway, left=5pt, align=right] {Closing\\Handshake};
+\end{tikzpicture}
+\caption{Lebenszyklus einer WebSocket-Verbindung}
+\label{fig:ws-ablauf}
+\end{figure}
+
+Im Browser steht das Protokoll über die Klasse \texttt{WebSocket} zur Verfügung \X[MDN WebSocket API; WHATWG WebSockets Standard]. Der Konstruktor erhält die \gls{url} des Servers (Schema \texttt{ws://} bzw.\ \texttt{wss://} bei \gls{tls}). Über die Ereignisse \texttt{onopen}, \texttt{onmessage}, \texttt{onerror} und \texttt{onclose} reagiert die Anwendung auf den Verbindungsaufbau, eingehende Nachrichten, Fehler und das Schließen. Die Methode \texttt{send()} verschickt Nachrichten, \texttt{close()} beendet die Verbindung. Die Eigenschaft \texttt{readyState} gibt den aktuellen Zustand an (\texttt{CONNECTING}, \texttt{OPEN}, \texttt{CLOSING}, \texttt{CLOSED}). Die Browser-\gls{api} erlaubt es nicht, beim Verbindungsaufbau eigene \gls{http}-Header wie \texttt{Authorization} zu setzen \X[WHATWG WebSockets Standard]. Diese Einschränkung wirkt sich auf die Authentifizierung aus (Abschnitt~\ref{sec:wsauth}).
+
+\section{Node.js und Express}
+\label{sec:express}
+
+Node.js ist eine Laufzeitumgebung für JavaScript außerhalb des Browsers. JavaScript-Code wird darin in einem einzigen Thread ausgeführt. Ein- und Ausgabeoperationen wie Netzwerk- oder Dateizugriffe blockieren diesen Thread nicht (Non-Blocking I/O): Node.js übergibt sie an die Bibliothek libuv, und sobald eine Operation abgeschlossen ist, wird der zugehörige Callback über die sogenannte Event Loop aufgerufen \X[Node.js-Dokumentation, Event Loop; libuv-Dokumentation]. Dadurch kann ein Node.js-Prozess viele gleichzeitig offene Verbindungen verwalten, ohne pro Verbindung einen eigenen Thread zu benötigen. Für einen WebSocket-Server, bei dem die meisten Verbindungen die meiste Zeit untätig sind, passt dieses Modell gut. Eine weitere Folge ist, dass zwei Callbacks nie gleichzeitig ausgeführt werden. Gemeinsam genutzte Datenstrukturen im Speicher müssen daher nicht durch Sperren geschützt werden.
+
+Synchrone Aufrufe, die lange rechnen oder auf eine Datei warten, halten die Event Loop dagegen an. In dieser Zeit wird keine andere Nachricht bearbeitet \X[Node.js-Dokumentation, Don't Block the Event Loop]. Für solche Arbeit gibt es Worker Threads: eigene Threads, die mit dem Haupt-Thread nur Nachrichten austauschen und keinen Speicher mit ihm teilen \X[Node.js-Dokumentation, Worker Threads].
+
+Express ist ein Web-Framework für Node.js \X[Express-Dokumentation]. Es stellt Routing für \gls{http}-Anfragen bereit und organisiert die Verarbeitung über Middleware. Das sind Funktionen, die nacheinander auf eine Anfrage angewendet werden, etwa um \gls{json} im Anfragekörper zu parsen, \gls{cors}-Header zu setzen oder Fehler zu behandeln. Express selbst unterstützt keine WebSockets. Im System übernimmt das die Bibliothek \texttt{ws} \X[ws-Bibliothek, GitHub]. Sie wird an denselben \gls{http}-Server angehängt, den auch Express verwendet. Anfragen mit \texttt{Upgrade}-Header auf dem konfigurierten Pfad beantwortet \texttt{ws} mit dem Handshake. Alle übrigen Anfragen bearbeitet Express wie gewohnt.
+
+\section{React}
+\label{sec:react}
+
+React ist eine JavaScript-Bibliothek zur Erstellung von Benutzeroberflächen \X[React-Dokumentation]. Eine Oberfläche wird aus Komponenten zusammengesetzt. Das sind Funktionen, die abhängig von ihren Eingaben (Props) und ihrem Zustand (State) beschreiben, wie ein Teil der Oberfläche aussehen soll. Ändert sich der Zustand, ruft React die Komponente erneut auf und überträgt nur die Unterschiede in das \gls{dom}. Dieses deklarative Modell unterscheidet sich von der ereignisgetriebenen Arbeitsweise einer WebSocket-Verbindung, bei der Nachrichten zu beliebigen Zeitpunkten eintreffen.
+
+Für Zustand und Seiteneffekte stellt React Hooks bereit. \texttt{useState} speichert einen Wert, dessen Änderung ein erneutes Rendern auslöst. \texttt{useRef} speichert einen veränderbaren Wert, der zwischen Render-Durchläufen erhalten bleibt, ohne ein erneutes Rendern auszulösen. Das eignet sich für Objekte wie eine WebSocket-Verbindung. \texttt{useEffect} führt Code nach dem Rendern aus und kann eine Aufräumfunktion zurückgeben. Laut React-Dokumentation gehören Verbindungen zu externen Systemen in solche Effects, wobei die Aufräumfunktion die Verbindung wieder schließen muss \X[React-Dokumentation, Synchronizing with Effects].
+
+Im Entwicklungsmodus mit \texttt{StrictMode} führt React jeden Effect absichtlich zweimal aus: einmal ausführen, aufräumen, erneut ausführen. Damit sollen fehlende Aufräumfunktionen auffallen \X[React-Dokumentation, StrictMode]. Für den Aufbau einer WebSocket-Verbindung bedeutet das, dass der Code mit einem doppelten Aufruf umgehen können muss, ohne zwei Verbindungen offen zu lassen.
+
+\section{Zustandsverwaltung mit Zustand}
+\label{sec:zustand}
+
+Daten, die viele Komponenten benötigen, müssten in React ohne zusätzliche Hilfsmittel über mehrere Ebenen als Props weitergereicht werden. Zudem greifen Event-Handler, die einmalig beim Aufbau einer Verbindung registriert werden, über ihre Closure auf den Zustand zum Zeitpunkt der Registrierung zu. Spätere Änderungen sehen sie dadurch nicht (veraltete Closures).
+
+Zustand ist eine Bibliothek, die einen Store außerhalb des React-Komponentenbaums bereitstellt \X[Zustand-Dokumentation]. Ein Store wird mit \texttt{create()} definiert und enthält Daten sowie Funktionen, die diese Daten verändern. Komponenten greifen über einen Hook mit einer Selektorfunktion auf einen Ausschnitt des Stores zu und werden nur dann neu gerendert, wenn sich dieser Ausschnitt ändert. Außerhalb von Komponenten kann der Store über \texttt{getState()} gelesen und verändert werden. Diese Methode liefert immer den aktuellen Stand, unabhängig davon, wann der aufrufende Code registriert wurde.
+
+\section{Grundlagen kollaborativer Anwendungen}
+\label{sec:kollab}
+
+Kollaborative Anwendungen ermöglichen mehreren Nutzern, gleichzeitig mit denselben Daten zu arbeiten. Dabei sind zwei Aspekte zu unterscheiden. Erstens der gemeinsame Zustand: Alle Teilnehmer sollen dieselben Daten sehen, und Änderungen eines Teilnehmers sollen bei allen anderen ankommen. Zweitens die Wahrnehmung der anderen Teilnehmer (Awareness bzw.\ Presence): Anzeigen wie \enquote{ist online} oder \enquote{schreibt gerade} zeigen, wer gerade anwesend oder aktiv ist \X[Quelle zu Awareness in Groupware].
+
+Bearbeiten mehrere Nutzer gleichzeitig denselben Inhalt, etwa denselben Absatz eines Dokuments, können Konflikte entstehen. Für diesen Fall gibt es spezialisierte Verfahren. \gls{ot} passt gleichzeitige Operationen so aneinander an, dass alle Teilnehmer zum selben Ergebnis kommen \X[Ellis/Gibbs 1989]. \glspl{crdt} sind Datenstrukturen, deren Änderungen in beliebiger Reihenfolge zusammengeführt werden können \X[Shapiro et al. 2011].
+
+Ein einfacherer Ansatz ist ein serverautoritatives Modell: Der Server hält den maßgeblichen Zustand, nimmt Änderungen entgegen, wendet sie nacheinander an und verteilt das Ergebnis an alle Teilnehmer \X[Kleppmann 2017]. Da der Server die Reihenfolge festlegt, entstehen keine widersprüchlichen Zustände. Das demonstrierte System verwendet diesen Ansatz.

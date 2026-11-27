@@ -1,0 +1,27 @@
+\chapter{Installation und Start des Systems}
+\label{anh:setup}
+
+Voraussetzung ist Node.js in Version 22 oder neuer. Nach dem Klonen des Repositorys werden die Abhängigkeiten installiert und die Konfiguration des Servers angelegt. In der Datei \texttt{server/.env} muss \texttt{JWT\_SECRET} auf eine lange, zufällige Zeichenkette gesetzt werden. \texttt{ALLOWED\_ORIGINS} enthält die Ursprünge, von denen WebSocket-Verbindungen angenommen werden. \texttt{ACCESS\_TOKEN\_TTL\_SECONDS} legt die Gültigkeit des Access-Tokens fest (Standard 900 Sekunden). Im Produktionsbetrieb wird \texttt{NODE\_ENV=production} gesetzt, damit die Cookies das Attribut \texttt{Secure} erhalten. Der Server muss dann über \gls{tls} erreichbar sein.
+
+\begin{lstlisting}[numbers=none, caption={Installation}]
+git clone https://github.com/Daweenci/Ang-NEN
+cd Ang-NEN
+npm install
+npm run install:all
+cp server/.env.example server/.env
+\end{lstlisting}
+
+Im Entwicklungsbetrieb starten Server (Port 4000, mit automatischem Neustart bei Änderungen) und Vite-Entwicklungsserver (Port 5173) gemeinsam. Die Anwendung wird dann über Port 5173 aufgerufen. Vite leitet \texttt{/login}, \texttt{/register}, \texttt{/auth} und \texttt{/ws} an den Server weiter:
+
+\begin{lstlisting}[numbers=none, caption={Start im Entwicklungsbetrieb}]
+npm run dev
+\end{lstlisting}
+
+Für den Produktionsbetrieb wird der Client gebaut. Anschließend liefert der Express-Server ihn selbst aus, und die gesamte Anwendung ist über Port 4000 erreichbar:
+
+\begin{lstlisting}[numbers=none, caption={Build und Start im Produktionsbetrieb}]
+npm run build
+npm start
+\end{lstlisting}
+
+Die SQLite-Datenbank wird beim ersten Start als \texttt{server/game.db} angelegt.

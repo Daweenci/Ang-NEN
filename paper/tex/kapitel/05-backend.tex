@@ -1,0 +1,264 @@
+\chapter{Backend-Implementierung}
+\label{kap:backend}
+\verfasser{\autorSE}
+
+Das Backend befindet sich im Verzeichnis \texttt{server/} und besteht aus folgenden Modulen:
+
+\begin{description}
+  \item[\texttt{index.js}] Einstiegspunkt, Express-Anwendung und \gls{http}-Server
+  \item[\texttt{auth.js}, \texttt{jwt.js}, \texttt{session.js}] Anmeldung, Erneuerung, Abmeldung, Access-Token und Cookies
+  \item[\texttt{websocket.js}] WebSocket-Server, Authentifizierung und Routing
+  \item[\texttt{handlers.js}] Logik für Lobbys, Freunde, Chat und Einladungen
+  \item[\texttt{broadcasting.js}, \texttt{util.js}] Versand von Nachrichten und Hilfsfunktionen
+  \item[\texttt{state.js}] Zustand im Speicher
+  \item[\texttt{database.js}, \texttt{passwords.js}] asynchrone Schnittstellen zu den Worker Threads
+  \item[\texttt{workers/}] Worker-Pool, Datenbank-Worker und Passwort-Worker
+  \item[\texttt{db.js}, \texttt{*Store.js}] Datenbankzugriff für Spieler, Freunde und Refresh-Tokens, ausgeführt im Datenbank-Worker
+\end{description}
+
+\section{Express-Server und REST-Authentifizierung}
+
+Beim Start lädt \texttt{index.js} die Konfiguration aus der Datei \texttt{.env}, startet den Datenbank-Worker, wartet, bis das Schema geladen ist, und baut dann die Express-Anwendung auf (Listing~\ref{lst:index}). Die Middleware \texttt{express.json()} parst \gls{json}-Anfragekörper. Danach folgen der Router für die Authentifizierung und, falls vorhanden, die Auslieferung des gebauten Clients. Eine \gls{cors}-Middleware gibt es nicht, da Client und Server unter demselben Ursprung laufen (Anhang~\ref{anh:setup}). Eine abschließende Fehler-Middleware beantwortet ungültige Anfragen, etwa mit fehlerhaftem \gls{json}, mit dem Statuscode 400.
+
+\begin{lstlisting}[language=JavaScript, caption={Aufbau des Servers in \texttt{index.js} (gekürzt)}, label=lst:index]
+await initDatabase(); // startet den Datenbank-Worker
+
+const app = express();
+app.use(express.json());
+app.use(authRouter);
+
+if (fs.existsSync(CLIENT_DIST)) {
+  app.use(express.static(CLIENT_DIST));
+  app.get('*', (req, res) => res.sendFile(path.join(CLIENT_DIST, 'index.html')));
+}
+
+const server = http.createServer(app);
+attachWebSocketServer(server);
+server.listen(process.env.PORT || 4000);
+\end{lstlisting}
+
+Entscheidend ist, dass der \gls{http}-Server explizit mit \texttt{http.createServer(app)} erzeugt und anschließend an den WebSocket-Server übergeben wird. Dadurch teilen sich Express und \texttt{ws} denselben Port. Beim Beenden über \texttt{SIGINT} oder \texttt{SIGTERM} schließt der Server die Datenbankverbindung und beendet alle Worker Threads.
+
+Die Endpunkte \texttt{POST /register} und \texttt{POST /login} in \texttt{auth.js} prüfen zunächst, ob Benutzername und Passwort als nicht-leere Zeichenketten vorliegen. Bei der Registrierung wird das Passwort mit bcrypt und dem Kostenfaktor 10 gehasht \X[Provos/Mazières 1999] und zusammen mit dem Benutzernamen gespeichert. Bei der Anmeldung wird das eingegebene Passwort mit dem gespeicherten Hash verglichen und der Zeitpunkt der letzten Anmeldung aktualisiert. Hashen, Vergleichen und Datenbankzugriffe laufen in Worker Threads (Abschnitt~\ref{sec:worker}), die Endpunkte sind daher asynchron. Bei Erfolg startet \texttt{startSession()} in beiden Fällen eine neue Sitzung. Zuerst legt \texttt{createSession()} in \texttt{refreshTokenStore.js} eine neue Sitzungs-ID und das erste Refresh-Token an. Danach erzeugt der Server das Access-Token (Listing~\ref{lst:jwt}) und setzt beide als Cookies. Das Access-Token enthält Spieler- und Sitzungs-ID und wird mit HMAC-SHA256 (\texttt{HS256}) und einem geheimen Schlüssel aus der Umgebungsvariable \texttt{JWT\_SECRET} signiert. Seine Gültigkeit beträgt standardmäßig 15 Minuten und lässt sich über \texttt{ACCESS\_TOKEN\_TTL\_SECONDS} einstellen. Fehlerhafte Eingaben werden mit Statuscode 400 beantwortet, falsche Zugangsdaten mit 401.
+
+\begin{lstlisting}[language=JavaScript, caption={Erzeugen und Prüfen des Access-Tokens in \texttt{jwt.js} (gekürzt)}, label=lst:jwt]
+export function generateJWT(playerID, sessionID) {
+  return jwt.sign({ playerID, sessionID }, getSecret(), {
+    algorithm: 'HS256',
+    expiresIn: getAccessTokenTTL(), // Standard: 15 * 60 Sekunden
+  });
+}
+
+export function parseJWT(token) {
+  const claims = jwt.verify(token, getSecret(), { algorithms: ['HS256'] });
+  if (typeof claims.playerID !== 'string' || typeof claims.sessionID !== 'string') {
+    throw new Error('invalid token claims');
+  }
+  return { playerID: claims.playerID, sessionID: claims.sessionID };
+}
+\end{lstlisting}
+
+Die Cookies setzt \texttt{setSessionCookies()} in \texttt{session.js} mit den Attributen aus Abschnitt~\ref{sec:wsauth} (Listing~\ref{lst:session}). Zum Lesen verwendet die Datei die Bibliothek \texttt{cookie} \X[cookie-Bibliothek, npm]. Die Lesefunktionen arbeiten direkt mit dem Node.js-Request. Dadurch lassen sie sich auch beim WebSocket-Handshake verwenden, der nicht durch Express läuft.
+
+\begin{lstlisting}[language=JavaScript, caption={Setzen der Cookies in \texttt{session.js} (gekürzt)}, label=lst:session]
+function baseOptions() {
+  return { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict' };
+}
+
+export function setSessionCookies(res, accessToken, refreshToken) {
+  res.cookie('session', accessToken,
+    { ...baseOptions(), path: '/', maxAge: getAccessTokenTTL() * 1000 });
+  res.cookie('refresh', refreshToken,
+    { ...baseOptions(), path: '/auth', maxAge: REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000 });
+}
+\end{lstlisting}
+
+Ein Refresh-Token ist eine Zeichenkette aus 32 zufälligen Bytes, erzeugt mit \texttt{crypto.randomBytes()}. In der Tabelle \texttt{refresh\_tokens} speichert der Server nur ihren SHA-256-Hash, zusammen mit Spieler, Sitzungs-ID (\texttt{family\_id}) und Ablaufdatum (jetzt plus 14 Tage). Der Endpunkt \texttt{POST /auth/refresh} ruft \texttt{rotateRefreshToken()} auf (Listing~\ref{lst:rotate}). Die Funktion läuft als Datenbanktransaktion. Sie unterscheidet vier Fälle:
+\begin{itemize}
+  \item \textbf{gültiges Token:} Der Eintrag wird als verbraucht markiert (\texttt{revoke\_reason = 'rotated'}), ein neuer Eintrag derselben Sitzung wird angelegt, und der Endpunkt setzt neue Cookies.
+  \item \textbf{vor weniger als 30 Sekunden ersetztes Token:} Antwort 200 ohne neue Cookies (paralleler Tab, Abschnitt~\ref{sec:wsauth}).
+  \item \textbf{früher ersetztes Token:} Wiederverwendung. Alle Tokens der Sitzung werden gesperrt (\texttt{'reuse'}).
+  \item \textbf{unbekanntes, abgelaufenes oder gesperrtes Token:} Der Endpunkt löscht die Cookies und antwortet mit 401.
+\end{itemize}
+
+\begin{lstlisting}[language=JavaScript, caption={Rotation des Refresh-Tokens in \texttt{refreshTokenStore.js} (vereinfacht: SQL-Abfragen als Hilfsfunktionen dargestellt)}, label=lst:rotate]
+function rotate(token) {
+  const row = findByHash(hashToken(token)); // inkl. expired, recently_revoked
+  if (!row || row.expired) return { status: 'invalid' };
+
+  if (row.revoke_reason) {
+    if (row.revoke_reason === 'rotated' && row.recently_revoked) return { status: 'grace' };
+    if (row.revoke_reason === 'rotated') revokeFamily(row.family_id, 'reuse');
+    return { status: 'invalid' };
+  }
+
+  markRotated(row.id);
+  const newToken = insertToken(row.player_id, row.family_id); // + 14 Tage
+  return { status: 'ok', playerID: row.player_id, familyID: row.family_id, token: newToken };
+}
+
+export function rotateRefreshToken(token) {
+  return db.transaction(rotate)(token);
+}
+\end{lstlisting}
+
+\texttt{POST /auth/logout} sperrt über \texttt{revokeSessionByToken()} alle Tokens der Sitzung (\texttt{'logout'}), schließt mit \texttt{closeSessionConnection()} die zugehörige WebSocket-Verbindung und löscht beide Cookies. Gesperrte Einträge bleiben bis zu ihrem Ablaufdatum in der Tabelle, damit eine spätere Wiederverwendung erkannt werden kann. Abgelaufene Einträge entfernt \texttt{deleteExpiredRefreshTokens()} beim Serverstart und danach stündlich.
+
+\section{WebSocket-Server und Nachrichten-Routing}
+\label{sec:ws-server}
+
+Die Funktion \texttt{attachWebSocketServer()} in \texttt{websocket.js} erzeugt eine Instanz der Klasse \texttt{WebSocketServer} aus der Bibliothek \texttt{ws} mit der Option \texttt{noServer}. Der WebSocket-Server übernimmt damit Handshakes nicht selbst. Stattdessen registriert die Funktion einen Handler für das Ereignis \texttt{upgrade} des \gls{http}-Servers, das bei jeder Anfrage mit \texttt{Upgrade}-Header ausgelöst wird (Listing~\ref{lst:upgrade}). Dieser Aufbau entspricht dem Vorgehen, das die Dokumentation von \texttt{ws} für die Authentifizierung beim Handshake beschreibt \X[ws-Dokumentation, Client authentication].
+
+Der Handler prüft nacheinander:
+
+\begin{enumerate}
+  \item den Pfad: Anfragen an andere Pfade als \texttt{/ws} werden verworfen,
+  \item den Header \texttt{Origin}: Ist der Ursprung nicht erlaubt, folgt die Antwort \texttt{403 Forbidden},
+  \item das Access-Token: \texttt{authenticateRequest()} liest das Cookie \texttt{session}, prüft Signatur und Ablaufzeit mit \texttt{parseJWT()} und lädt den Spieler über den Datenbank-Worker. Schlägt einer dieser Schritte fehl, folgt \texttt{401 Unauthorized}.
+\end{enumerate}
+
+Nur wenn alle Prüfungen bestehen, schließt \texttt{handleUpgrade()} den Handshake ab, und der Spieler wird an das Ereignis \texttt{connection} übergeben. Abgelehnte Clients erhalten also nie eine WebSocket-Verbindung.
+
+\begin{lstlisting}[language=JavaScript, caption={Prüfung des Handshakes in \texttt{websocket.js} (gekürzt)}, label=lst:upgrade]
+const wss = new WebSocketServer({ noServer: true });
+
+httpServer.on('upgrade', (req, socket, head) => {
+  handleUpgrade(wss, allowedOrigins, req, socket, head)
+    .catch(() => rejectUpgrade(socket, 500, 'Internal Server Error'));
+});
+
+async function handleUpgrade(wss, allowedOrigins, req, socket, head) {
+  const { pathname } = new URL(req.url, 'http://localhost');
+  if (pathname !== '/ws') { socket.destroy(); return; }
+
+  if (!allowedOrigins.includes(req.headers.origin)) {
+    rejectUpgrade(socket, 403, 'Forbidden');
+    return;
+  }
+
+  const session = await authenticateRequest(req); // { dbPlayer, sessionID }
+  if (socket.destroyed) return;
+  if (!session) {
+    rejectUpgrade(socket, 401, 'Unauthorized');
+    return;
+  }
+
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    wss.emit('connection', ws, req, session);
+  });
+}
+\end{lstlisting}
+
+Im Handler für \texttt{connection} ruft der Server zuerst \texttt{registerConnection()} auf. Die Funktion lädt die offenen Freundschaftsanfragen und die Freundesliste aus der Datenbank und ändert erst danach den Zustand im Speicher, ohne \texttt{await} dazwischen. Sie beendet gegebenenfalls eine ältere Verbindung desselben Spielers. Dann trägt sie den Spieler zusammen mit der Sitzungs-ID in \texttt{activePlayers} ein. Über diese ID findet \texttt{closeSessionConnection()} bei der Abmeldung die Verbindung. Zuletzt sendet sie die \texttt{welcome}-Nachricht und benachrichtigt alle Freunde, dass der Spieler online ist. Das Access-Token wird nach dem Handshake nicht erneut geprüft, die Verbindung bleibt also nach seinem Ablauf bestehen.
+
+Weil einige Handler auf die Datenbank warten, hängt der Server alle Nachrichten einer Verbindung an eine eigene Promise-Kette an. Die Nachrichten eines Clients werden so weiterhin in der Reihenfolge ihres Eintreffens bearbeitet, andere Verbindungen müssen dabei nicht warten.
+
+Danach wird jede eingehende Nachricht als \gls{json} geparst. Schlägt das fehl oder ist das Ergebnis kein Objekt, erhält der Client eine Fehlermeldung. Anschließend wird die Nachricht anhand ihres Typs an einen Handler weitergeleitet. Die Zuordnung ist als Objekt hinterlegt (Listing~\ref{lst:routing}). Jeder Handler erhält den Spieler aus der Verbindung und die Nachricht. Unbekannte Typen beantwortet der Server mit einer Fehlermeldung. Wirft ein Handler eine Ausnahme, wird sie protokolliert und der Client erhält ebenfalls eine Fehlermeldung, ohne dass die Verbindung abbricht.
+
+\begin{lstlisting}[language=JavaScript, caption={Routing-Tabelle und Verteilung der Nachrichten in \texttt{websocket.js} (gekürzt, geändert: \texttt{async}/\texttt{await})}, label=lst:routing]
+const routes = {
+  [MessageType.RequestJoinLobby]: handlers.joinLobbyHandler,
+  [MessageType.RequestLeaveLobby]: handlers.leaveLobbyHandler,
+  [MessageType.RequestCreateLobby]: handlers.createLobbyHandler,
+  [MessageType.RequestSendLobbyChatMessage]: handlers.sendLobbyChatMessageHandler,
+  [MessageType.RequestStartedTyping]: handlers.typingHandler,
+  // ... 10 weitere Eintraege
+};
+
+async function handleMessage(player, data) {
+  let msg;
+  try { msg = JSON.parse(data.toString()); }
+  catch { sendErrorToPlayer(player, 'Invalid message format'); return; }
+
+  const handler = routes[msg.type];
+  if (!handler) { sendErrorToPlayer(player, 'Unknown message type'); return; }
+  try { await handler(player, msg); }    // Handler mit Datenbankzugriff sind async
+  catch (err) { sendErrorToPlayer(player, `Invalid ${msg.type} message`); }
+}
+\end{lstlisting}
+
+Wird eine Verbindung geschlossen, prüft der Server zunächst, ob sie noch die aktive Verbindung des Spielers ist. Wurde sie durch eine neuere Anmeldung ersetzt, ist nichts weiter zu tun. Andernfalls wird der Spieler aus \texttt{activePlayers} und aus seiner Lobby entfernt. Seine offenen Einladungen werden verworfen, alle Clients erhalten die aktualisierte Lobby-Liste und seine Freunde die Mitteilung, dass er offline ist.
+
+\section{Handler und Broadcasting}
+
+Die Handler in \texttt{handlers.js} folgen einem gemeinsamen Muster: Eingaben prüfen, Zustand verändern, Ergebnis verteilen. Handler mit Datenbankzugriff, etwa für Freunde und private Nachrichten, sind \texttt{async}-Funktionen. Am Beispiel von \texttt{joinLobbyHandler} sieht das so aus:
+
+\begin{enumerate}
+  \item Die Lobby wird anhand der ID gesucht. Ist der Spieler bereits Mitglied, passiert nichts.
+  \item Befindet sich der Spieler in einer anderen Lobby, wird er dort entfernt. Ist diese Lobby danach leer, wird sie gelöscht.
+  \item Liegt keine Einladung vor, wird das Passwort geprüft. Danach wird geprüft, ob die Lobby voll ist. Im Fehlerfall erhält der Spieler \texttt{join\_lobby\_failed}.
+  \item Der Spieler wird hinzugefügt, eine eventuelle Einladung wird entfernt.
+  \item Der Spieler erhält \texttt{join\_lobby\_successful} mit Lobby und Chatverlauf. Alle Mitglieder erhalten \texttt{lobby\_updated}, alle verbundenen Clients \texttt{lobby\_list}.
+\end{enumerate}
+
+Für das Verteilen von Nachrichten stellt \texttt{broadcasting.js} Funktionen für drei Zielgruppen bereit (Listing~\ref{lst:broadcast}): alle Mitglieder einer Lobby (\texttt{broadcastLobbyUpdate}), alle verbundenen Clients (\texttt{broadcastLobbies}) und einzelne Spieler. Die Freunde eines Spielers werden in \texttt{handlers.js} über die Freundesliste aus der Datenbank ermittelt und einzeln angeschrieben. Alle Wege enden in \texttt{sendResponse()}. Diese Funktion serialisiert die Nachricht und sendet sie nur dann, wenn der Empfänger existiert und seine Verbindung den Zustand \texttt{OPEN} hat. Dadurch können Handler Nachrichten an Spieler adressieren, ohne vorher zu prüfen, ob diese online sind.
+
+\begin{lstlisting}[language=JavaScript, caption={Versand an Lobby-Mitglieder und an alle Clients (\texttt{broadcasting.js}, \texttt{util.js})}, label=lst:broadcast]
+export function broadcastLobbyUpdate(lobby) {
+  for (const player of [...lobby.players]) {
+    sendResponse(player, { type: MessageType.ResponseLobbyUpdated, lobby: toLobbyDTO(lobby) });
+  }
+}
+
+export function broadcastLobbies() {
+  const response = { type: MessageType.ResponseLobbyList, lobbies: getLobbiesList() };
+  for (const player of activePlayers.values()) sendResponse(player, response);
+}
+
+export function sendResponse(player, response) {
+  if (!player || player.ws.readyState !== WebSocket.OPEN) return;
+  player.ws.send(JSON.stringify(response));
+}
+\end{lstlisting}
+
+Die internen Objekte werden vor dem Versand in \glspl{dto} umgewandelt. \texttt{toLobbyDTO()} übernimmt von einer Lobby nur ID, Name, maximale Spielerzahl, Sichtbarkeit, die Spieler (nur ID und Name) und den Bereit-Status. Das Lobby-Passwort und die WebSocket-Objekte der Spieler verlassen den Server dadurch nie.
+
+\section{Datenbankzugriff mit SQLite}
+\label{sec:sqlite}
+
+Als Datenbank wird SQLite über die Bibliothek \texttt{better-sqlite3} verwendet \X[better-sqlite3-Dokumentation]. Sie bietet nur synchrone Aufrufe an. Damit diese die Event Loop nicht blockieren, laufen alle Datenbankzugriffe im Datenbank-Worker (Abschnitt~\ref{sec:worker}). Beim Start setzt \texttt{db.js} einige Optionen: Write-Ahead-Logging, die Prüfung von Fremdschlüsseln und eine Wartezeit von fünf Sekunden bei gesperrter Datenbank. Danach führt es das Schema aus \texttt{schema.sql} aus. Alle Tabellen werden mit \texttt{CREATE TABLE IF NOT EXISTS} angelegt, sodass der Start auch bei vorhandener Datenbank funktioniert. Abbildung~\ref{fig:er} zeigt die fünf Tabellen.
+
+\begin{figure}[ht]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[font=\sffamily\scriptsize, >=Stealth,
+  tbl/.style={draw, rectangle split, rectangle split parts=2, rectangle split part fill={black!10,white}, align=left, inner sep=4pt, text width=4.2cm}]
+  \node[tbl] (players) at (0,0) {\textbf{players}\nodepart{two}\underline{id} TEXT\\username TEXT UNIQUE\\password\_hash TEXT\\created\_at, last\_login};
+  \node[tbl] (fr) at (7,1.2) {\textbf{friend\_requests}\nodepart{two}\underline{sender\_id} $\rightarrow$ players\\\underline{receiver\_id} $\rightarrow$ players\\status, created\_at\\CHECK sender $\neq$ receiver};
+  \node[tbl] (fl) at (7,-2.0) {\textbf{friend\_lists}\nodepart{two}\underline{first\_player\_id} $\rightarrow$ players\\\underline{second\_player\_id} $\rightarrow$ players\\CHECK first $<$ second};
+  \node[tbl] (msg) at (0,-3.6) {\textbf{messages}\nodepart{two}\underline{id} INTEGER (autoincr.)\\(first\_player\_id, second\_player\_id)\\\quad$\rightarrow$ friend\_lists\\sender\_id $\rightarrow$ players\\content, created\_at};
+  \node[tbl] (rt) at (-6.2,-1.2) {\textbf{refresh\_tokens}\nodepart{two}\underline{id} INTEGER (autoincr.)\\player\_id $\rightarrow$ players\\family\_id (Sitzung)\\token\_hash UNIQUE\\expires\_at, revoked\_at,\\revoke\_reason};
+  \draw[->] (rt.east) to[out=0,in=180] (players.west);
+  \draw[->] (fr.west) to[out=180,in=20] (players.north east);
+  \draw[->] (fl.west) to[out=180,in=-20] (players.south east);
+  \draw[->] (msg.north) -- (players.south);
+  \draw[->] (msg.east) to[out=0,in=200] (fl.south west);
+\end{tikzpicture}}
+\caption{Tabellen der SQLite-Datenbank (unterstrichen: Primärschlüssel, Pfeil: Fremdschlüssel)}
+\label{fig:er}
+\end{figure}
+
+Eine Freundschaft ist symmetrisch, soll aber nur einmal gespeichert werden. Deshalb legt die Tabelle \texttt{friend\_lists} jedes Paar so ab, dass die kleinere Spieler-ID in der ersten Spalte steht. Eine \texttt{CHECK}-Bedingung erzwingt diese Reihenfolge. Im Code bringt die Funktion \texttt{orderedPair()} zwei IDs vor jedem Zugriff in diese Reihenfolge (Listing~\ref{lst:pair}). Private Nachrichten verweisen über dasselbe geordnete Paar auf die Freundschaft. Wird eine Freundschaft gelöscht, entfernt eine Transaktion zuerst die zugehörigen Nachrichten und dann die Freundschaft selbst. Indizes auf den Empfänger von Freundschaftsanfragen, auf beide Spalten von \texttt{friend\_lists} und auf das Paar mit Zeitstempel in \texttt{messages} beschleunigen die häufigsten Abfragen.
+
+\begin{lstlisting}[language=JavaScript, caption={Geordnetes Paar und Prüfung einer Freundschaft in \texttt{friendsStore.js}}, label=lst:pair]
+function orderedPair(a, b) {
+  return a < b ? [a, b] : [b, a];
+}
+
+export function areFriends(playerID, otherPlayerID) {
+  const [firstID, secondID] = orderedPair(playerID, otherPlayerID);
+  const row = db
+    .prepare('SELECT 1 FROM friend_lists WHERE first_player_id = ? AND second_player_id = ?')
+    .get(firstID, secondID);
+  return Boolean(row);
+}
+\end{lstlisting}
+
+Alle Zugriffe verwenden vorbereitete Anweisungen mit Platzhaltern, sodass Benutzereingaben nie direkt in \gls{sql} eingesetzt werden. Beim Abruf eines privaten Chats werden die letzten 200 Nachrichten geladen und in chronologischer Reihenfolge zurückgegeben. Der Zeitstempel wird dabei vom SQLite-Format in Millisekunden seit 1970 umgerechnet.
+
+\section{Auslagerung in Worker Threads}
+\label{sec:worker}
+
+Die Datenbankzugriffe über \texttt{better-sqlite3} und das Hashen von Passwörtern mit bcrypt sind synchron. bcrypt ist zudem absichtlich rechenaufwendig, damit das Erraten von Passwörtern teuer wird. Im Haupt-Thread würden beide die Event Loop blockieren, und der Server könnte während einer Anmeldung keine WebSocket-Nachrichten anderer Spieler bearbeiten (Abschnitt~\ref{sec:express}). Beide laufen deshalb in Worker Threads.
+
+Die Klasse \texttt{WorkerPool} startet eine feste Zahl von Worker Threads und verteilt Aufrufe per \texttt{postMessage} auf freie Worker. Jeder Aufruf liefert ein Promise. Für die Datenbank gibt es genau einen Worker, der als einziger die SQLite-Verbindung hält und die Aufrufe nacheinander abarbeitet, sodass sich Transaktionen nicht überschneiden. Im Haupt-Thread stellt \texttt{database.js} dieselben Funktionen asynchron bereit, etwa \texttt{await getFriendsList(playerID)}. Für bcrypt gibt es einen Pool mit einem Worker je freiem Prozessorkern, sodass mehrere Anmeldungen parallel bearbeitet werden. Der Haupt-Thread bleibt dadurch auch bei vielen gleichzeitigen Anmeldungen frei und beantwortet WebSocket-Nachrichten schneller.

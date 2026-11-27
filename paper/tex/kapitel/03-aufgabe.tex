@@ -1,0 +1,56 @@
+\chapter{Aufgabenstellung und Demonstrationsanwendung}
+\label{kap:aufgabe}
+\verfasser{\autorDG}
+
+\section{Aufgabenstellung}
+
+Die Aufgabenstellung umfasst vier Anforderungen an eine Webanwendung mit WebSockets und React:
+
+\begin{description}
+  \item[Echtzeit-Updates von Daten:] Änderungen an Daten, die mehrere Nutzer sehen, werden ohne Verzögerung an alle betroffenen Clients übertragen.
+  \item[Live-Benachrichtigungen bei neuen Einträgen:] Entsteht ein neuer Eintrag, der einen Nutzer betrifft, wird dieser sofort benachrichtigt.
+  \item[Kollaboratives Bearbeiten von Inhalten:] Mehrere Nutzer arbeiten gleichzeitig an gemeinsamen Inhalten, und jeder sieht die Beiträge der anderen.
+  \item[Live-Datenaktualisierung ohne Seitenneuladen:] Die Oberfläche bleibt aktuell, ohne dass der Nutzer die Seite neu laden muss.
+\end{description}
+
+\section{Die Spiellobby als Demonstrationsanwendung}
+
+Zur Demonstration wurde eine webbasierte Spiellobby entwickelt. In einer Lobby treffen sich mehrere Spieler vor dem Start einer Partie. Ihr Zustand ändert sich ständig durch die Aktionen verschiedener Personen: Spieler treten bei oder verlassen sie, schreiben Nachrichten und melden ihre Spielbereitschaft. Dadurch lassen sich alle vier Anforderungen in einem zusammenhängenden Szenario zeigen. Das eigentliche Spiel ist nicht Teil der Anwendung.
+
+Die Anwendung bietet folgende Funktionen:
+
+\begin{itemize}
+  \item Registrierung und Anmeldung mit Benutzername und Passwort,
+  \item ein Hauptmenü mit der Liste aller offenen Lobbys,
+  \item Erstellen von Lobbys mit Name, maximaler Spielerzahl (2 bis 4) und optionalem Passwort,
+  \item Betreten und Verlassen von Lobbys,
+  \item ein Chat innerhalb jeder Lobby mit Anzeige, wer gerade schreibt,
+  \item ein Bereit-Status, mit dem jeder Spieler seine Spielbereitschaft signalisiert,
+  \item eine Freundesliste mit Freundschaftsanfragen und Online-Status,
+  \item Einladungen von Freunden in die eigene Lobby,
+  \item ein privater Chat zwischen Freunden mit Zähler für ungelesene Nachrichten.
+\end{itemize}
+
+\section{Zuordnung der Anforderungen zu Funktionen}
+
+Tabelle~\ref{tab:zuordnung} ordnet jeder Anforderung die Funktionen der Spiellobby zu, die sie umsetzen, sowie die zugehörigen WebSocket-Nachrichten. Die Umsetzung und der Nachweis jeder Anforderung folgen in Kapitel~\ref{kap:umsetzung}.
+
+\begin{table}[ht]
+  \centering
+  \caption{Zuordnung der Anforderungen zu Funktionen der Spiellobby}
+  \label{tab:zuordnung}
+  \sffamily\small
+  \begin{tabular}{p{0.24\linewidth}p{0.34\linewidth}p{0.32\linewidth}}
+    \toprule
+    \textbf{Anforderung} & \textbf{Funktion} & \textbf{Nachrichten} \\
+    \midrule
+    Echtzeit-Updates von Daten & Lobby-Liste; Spieler und Bereit-Status einer Lobby & \texttt{lobby\_list}, \texttt{lobby\_updated} \\
+    \addlinespace
+    Live-Benachrichtigungen & Freundschaftsanfragen, Einladungen, Online-Status, private Nachrichten & \texttt{friend\_request\_received}, \texttt{invite\_received}, \texttt{friend\_online\_status}, \texttt{private\_message} \\
+    \addlinespace
+    Kollaboratives Bearbeiten & Lobby-Chat, privater Chat, Tipp-Anzeige, gemeinsamer Bereit-Status & \texttt{lobby\_chat\_message}, \texttt{player\_typing}, \texttt{private\_typing\_status}, \texttt{lobby\_updated} \\
+    \addlinespace
+    Aktualisierung ohne Neuladen & eine dauerhafte Verbindung nach der Anmeldung & \texttt{welcome} und alle obigen \\
+    \bottomrule
+  \end{tabular}
+\end{table}

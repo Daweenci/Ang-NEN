@@ -1,0 +1,168 @@
+% Dokumententyp, benutzte Pakete und deren Einstellungen
+\documentclass[	\hsmasprache,%
+				\hsmaabgabe,%
+				\hsmapublizieren,%
+				\genderhinweis,
+				\hsmaquellcode,
+				\hsmasymbole,
+				\hsmaglossar,
+				\hsmatc]{HMA}
+
+% Wo sind die Bilder?
+\graphicspath{{bilder/}}
+
+
+% Wo liegt Sourcecode?
+\newcommand{\srcloc}{src/}
+
+
+% Checklisten mit zwei Ebenen
+\newlist{checklist}{itemize}{2}
+\setlist[checklist]{label=$\square$}
+
+
+
+% Befehl zum Erstellen eigener Makros. In diesem Fall ist es ein Makro für das Einbinden von Bildern. Das label (für \ref) ist dann der Name der Bilddatei
+\newcommand{\bild}[3]{
+	\begin{figure}[ht]
+		\centering
+		\includegraphics[width=#2]{#1}
+		\caption{#3}
+		\label{#1}
+\end{figure}}
+
+
+
+
+							
+
+
+\newcommand{\snowcard}[9]{
+	\begin{table}[ht!]
+		\caption{\hsmasnowcardanforderung\ #1 -- #4}\label{#1}
+		\renewcommand{\arraystretch}{1.2}
+		\centering
+		\sffamily
+		\begin{footnotesize}
+
+			\begin{tabularx}{\linewidth}{sssssl}
+				\toprule
+				\textbf{\hsmasnowcardno} & #1 & \textbf{\hsmasnowcardart} & #2 & \textbf{\hsmasnowcardprio} & #3 \\
+				\midrule
+				\multicolumn{2}{l}{\textbf{\hsmasnowcardtitel}} & \multicolumn{4}{l}{\parbox[t]{11.8cm}{#4}} \\
+				\ifx&#5&%
+				\else
+				\multicolumn{2}{l}{\textbf{\hsmasnowcardherkunft}} & \multicolumn{4}{l}{\parbox[t]{11.8cm}{#5}} \\
+				\fi
+				\ifx&#6&%
+				\else
+				\multicolumn{2}{l}{\textbf{\hsmasnowcardkonflikt}} & \multicolumn{4}{l}{\parbox[t]{11.8cm}{#6}} \\
+				\fi
+				\addlinespace
+				\multicolumn{6}{l}{\textbf{\hsmasnowcardbeschreibung}} \\
+				\multicolumn{6}{l}{\parbox[t]{13.5cm}{#7\strut}} \\
+				\ifx&#8&%
+				\else
+				\addlinespace
+				\multicolumn{6}{l}{\textbf{\hsmasnowcardfitkriterium}} \\
+				\multicolumn{6}{l}{\parbox[t]{13.5cm}{#8\strut}} \\
+				\fi
+				\ifx&#9&%
+
+				\else
+				\addlinespace
+				\multicolumn{6}{l}{\textbf{\hsmasnowcardmaterial}} \\
+				\multicolumn{6}{l}{\parbox[t]{13.5cm}{#9\strut}} \\
+				\fi
+				\bottomrule
+			\end{tabularx}
+		\end{footnotesize}
+	\end{table}
+}
+
+
+
+% Quality Attribute Scenario
+\newcommand{\qas}[9]{
+	\begin{table}[ht!]
+		\caption{\hsmaqasanforderung\ #1 -- #3}\label{#1}
+		\renewcommand{\arraystretch}{1.2}
+		\centering
+		\sffamily
+		\begin{footnotesize}
+
+			\begin{tabularx}{\linewidth}{sssssl}
+				\toprule
+				\textbf{\hsmaqasno} & #1 & \textbf{\hsmaqasart} & QAS & \textbf{\hsmaqasprio} & #2 \\
+				\midrule
+				\multicolumn{2}{l}{\textbf{\hsmaqastitel}} & \multicolumn{4}{l}{\parbox[t]{11.8cm}{#3}} \\
+				\multicolumn{2}{l}{\textbf{\hsmaqasquelle}} & \multicolumn{4}{l}{\parbox[t]{11.8cm}{#4}} \\
+				\multicolumn{2}{l}{\textbf{\hsmaqasstimulus}} & \multicolumn{4}{l}{\parbox[t]{11.8cm}{#5}} \\
+				\multicolumn{2}{l}{\textbf{\hsmaqasartefakt}} & \multicolumn{4}{l}{\parbox[t]{11.8cm}{#6}} \\
+				\addlinespace
+				\multicolumn{6}{l}{\textbf{\hsmaqasumgebung}} \\
+				\multicolumn{6}{l}{\parbox[t]{13.5cm}{#7\strut}} \\
+				\addlinespace
+				\multicolumn{6}{l}{\textbf{\hsmaqasantwort}} \\
+				\multicolumn{6}{l}{\parbox[t]{13.5cm}{#8\strut}} \\
+				\addlinespace
+				\multicolumn{6}{l}{\textbf{\hsmaqasmass}} \\
+				\multicolumn{6}{l}{\parbox[t]{13.5cm}{#9\strut}} \\
+				\bottomrule
+			\end{tabularx}
+		\end{footnotesize}
+	\end{table}
+}
+
+
+% -------------------------------------------------------
+% Planungsnotizen: Sobald ein Abschnitt ausgeschrieben ist, die \plan{...}-Box
+% dort löschen. Alle auf einmal ausblenden: \plantrue durch \planfalse ersetzen.
+\newif\ifplan
+\plantrue
+\newcommand{\plan}[1]{%
+  \ifplan
+    \par\noindent\colorbox{black!6}{\parbox{\dimexpr\linewidth-2\fboxsep\relax}{%
+      \small\sffamily\textbf{Geplant:}\ #1}}\par\medskip
+  \fi}
+
+% Kennzeichnung, wer einen Abschnitt verfasst hat (direkt nach der Überschrift)
+\newcommand{\verfasser}[1]{%
+  \par\vspace{-0.6\baselineskip}\noindent{\small\sffamily\color{black!55}Verfasst von: #1}\par\medskip}
+
+% Grafiken
+\usetikzlibrary{arrows.meta,positioning,fit,calc,shapes.geometric,backgrounds,decorations.pathreplacing,shapes.multipart}
+
+% Platzhalter für Screenshots, bis echte Bilder vorliegen
+\newcommand{\screenshotplatzhalter}[2]{%
+  \fbox{\parbox[c][#1][c]{0.9\linewidth}{\centering\sffamily\small\color{black!55}Screenshot folgt:\\ #2}}}
+
+% Screenshot mit dünnem Rahmen (die App hat einen weißen Hintergrund)
+\newcommand{\screenshot}[2][\linewidth]{{\setlength{\fboxsep}{0pt}\setlength{\fboxrule}{0.4pt}\fbox{\includegraphics[width=#1]{screenshots/#2}}}}
+
+% Platzhalter für noch fehlende Quellen. Ausgabe: [X]. Das optionale Argument
+% beschreibt, welche Quelle gemeint ist, und erscheint nicht im PDF.
+% Beispiel: \X[RFC 6455, Abschnitt 4]
+\newcommand{\X}[1][]{\mbox{[X]}}
+
+% Syntax für JavaScript/TypeScript-Listings
+\lstdefinelanguage{JavaScript}{
+  keywords={const,let,var,function,return,if,else,for,of,in,new,import,from,export,async,await,try,catch,throw,switch,case,break,default,typeof,null,true,false,continue},
+  sensitive=true,
+  morecomment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]",
+  morestring=[b]',
+  morestring=[b]`
+}
+
+% Mehr Spielraum beim Umbruch langer Code-Bezeichner
+\setlength{\emergencystretch}{3em}
+
+% Markierungen fuer die Ueberarbeitung (vor der Abgabe entfernen)
+\usepackage[most]{tcolorbox}
+\newtcolorbox{neu}{breakable, enhanced, colback=yellow!40, colframe=yellow!40, boxrule=0pt, arc=0pt, left=3pt, right=3pt, top=2pt, bottom=2pt}
+\newtcolorbox{offen}{breakable, enhanced, colback=yellow!40, colframe=orange!85!black, boxrule=1.2pt, arc=0pt, left=3pt, right=3pt, top=2pt, bottom=2pt, title={Noch klären}, fonttitle=\sffamily\small\bfseries, coltitle=black, colbacktitle=orange!45}
+\usepackage{soul}
+\sethlcolor{yellow!40}
+\newcommand{\neutext}[1]{\hl{#1}}

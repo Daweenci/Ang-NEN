@@ -1,0 +1,123 @@
+\chapter{Frontend-Implementierung}
+\label{kap:frontend}
+\verfasser{\autorDG}
+
+\section{Aufbau des React-Clients}
+
+Der Client im Verzeichnis \texttt{client/} ist mit Vite als Build-Werkzeug und TypeScript umgesetzt. Für das Layout wird Tailwind CSS verwendet, für Eingabeelemente wie Schaltflächen, Checkboxen und Radiobuttons Komponenten auf Basis von Radix UI. Kurzzeitige Hinweise (Toasts) werden mit der Bibliothek \texttt{sonner} angezeigt.
+
+Die Oberfläche besteht aus drei Seiten und mehreren Komponenten:
+
+\begin{description}
+  \item[\texttt{Auth}] Anmeldung und Registrierung
+  \item[\texttt{MainMenu}] Liste der Lobbys, Dialoge zum Erstellen einer Lobby (\texttt{CreateLobbyModal}) und zur Passworteingabe (\texttt{JoinPasswordModal})
+  \item[\texttt{LobbyScreen}] Spielerliste, Bereit-Status, Einladen und Lobby-Chat
+  \item[\texttt{UserProfile}] Menü oben rechts mit Freundesliste, Freundschaftsanfragen und Einladungen
+  \item[\texttt{PrivateChat}] Panel unten links für private Nachrichten
+\end{description}
+
+Der Client verwendet keinen Router. Welche Seite angezeigt wird, steht im Feld \texttt{currentPage} des Stores. \texttt{App.tsx} wählt anhand dieses Werts die passende Seitenkomponente aus. Ein Seitenwechsel ist dadurch eine reine Zustandsänderung im Store, zum Beispiel nach dem Betreten einer Lobby. Er führt nie zu einem Neuladen der Seite.
+
+\texttt{Auth} sendet Benutzername und Passwort mit \texttt{fetch} an \texttt{/login} bzw.\ \texttt{/register}. Die Pfade sind relativ, weil Client und Server denselben Ursprung haben. Ist die Antwort erfolgreich, ruft \texttt{Auth} \texttt{connect()} auf. Die Tokens selbst kommen im Client-Code nicht vor: Der Browser speichert die Cookies aus der Antwort und sendet das Access-Token beim WebSocket-Handshake automatisch mit. Beim nächsten Aufruf der Seite versucht der Client sofort, die Verbindung aufzubauen. Ist das Access-Token abgelaufen, das Refresh-Token aber noch gültig, erneuert der Client die Sitzung automatisch (Abschnitt~\ref{sec:wsauth}). Der Nutzer gelangt so ohne erneute Anmeldung ins Hauptmenü.
+
+\section{Verbindungsverwaltung im Hook \texttt{useWebSocket}}
+
+Die gesamte Kommunikation mit dem Server ist im Hook \texttt{useWebSocket} gekapselt. Er wird einmal in \texttt{App.tsx} aufgerufen und liefert Funktionen für alle Aktionen, etwa \texttt{createLobby}, \texttt{joinLobby}, \texttt{sendLobbyChatMessage} und \texttt{sendPrivateMessage}. \texttt{App.tsx} reicht diese Funktionen als Props an die Seiten weiter. Jede dieser Funktionen erzeugt eine Nachricht mit dem passenden \texttt{type} und übergibt sie an \texttt{sendMessage()}. Diese sendet nur, wenn die Verbindung offen ist, und zeigt andernfalls einen Hinweis an.
+
+Die Verbindung selbst liegt in einer Ref (\texttt{useRef}), weil ihr Austausch kein erneutes Rendern auslösen soll. Listing~\ref{lst:connect} zeigt die Funktion \texttt{connect()}.
+
+\begin{lstlisting}[language=JavaScript, caption={Verbindungsaufbau in \texttt{useWebSocket.tsx} (gekürzt)}, label=lst:connect]
+const wsUrl = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+
+const connect = (afterRefresh = false) => {
+  if (ws.current && (ws.current.readyState === WebSocket.CONNECTING ||
+                     ws.current.readyState === WebSocket.OPEN)) return;
+
+  const socket = new WebSocket(wsUrl); // Access-Token-Cookie sendet der Browser mit
+  ws.current = socket;
+  let opened = false;
+
+  socket.onopen = () => {
+    if (ws.current !== socket) return;
+    opened = true; // der Server sendet "welcome" von sich aus
+  };
+
+  socket.onmessage = (event) => {
+    if (ws.current !== socket) return;
+    const data = JSON.parse(event.data);
+    switch (data.type) { /* ein case je Nachrichtentyp */ }
+  };
+
+  socket.onclose = (event) => {
+    if (ws.current !== socket) return;
+    ws.current = null;
+    if (!opened) {                              // Handshake abgelehnt
+      if (afterRefresh) { resetToAuth(); return; }
+      refreshSession().then((ok) => ok ? connect(true) : resetToAuth());
+    } else if (event.code === 4000) resetToAuth();          // abgemeldet
+    else if (event.code === 1008) { resetToAuth(); /* Hinweis anzeigen */ }
+  };
+};
+\end{lstlisting}
+
+Die \gls{url} der Verbindung wird aus dem aktuellen Ursprung der Seite gebildet, bei \texttt{https} mit dem Schema \texttt{wss}. Ist bereits eine Verbindung im Aufbau oder offen, wird keine zweite erzeugt. Lehnt der Server den Handshake ab, weil kein gültiges Access-Token vorliegt, wird die Verbindung geschlossen, ohne je geöffnet worden zu sein. Diesen Fall erkennt der Client an der Variable \texttt{opened}. Er ruft dann einmal \texttt{refreshSession()} auf, das eine Anfrage an \texttt{/auth/refresh} sendet. Bei Erfolg ruft er \texttt{connect(true)} auf. Der Parameter verhindert eine Endlosschleife: Scheitert auch der zweite Handshake oder die Erneuerung, zeigt der Client die Anmeldeseite ohne Fehlermeldung an. Schließt der Server eine offene Verbindung mit dem Code \texttt{4000}, wurde die Sitzung abgemeldet, und der Client kehrt ebenfalls zur Anmeldeseite zurück. Jeder Ereignis-Handler prüft zuerst, ob der Socket, zu dem er gehört, noch der aktuelle in \texttt{ws.current} ist. Wird eine Verbindung ersetzt, etwa durch den doppelten Aufruf des Effects im \texttt{StrictMode} (Abschnitt~\ref{sec:react}), ignorieren die Handler des alten Sockets alle weiteren Ereignisse. Ein \texttt{useEffect} ohne Abhängigkeiten ruft \texttt{connect()} beim ersten Rendern auf, um eine bestehende Sitzung fortzusetzen. Seine Aufräumfunktion entfernt alle Handler und schließt die Verbindung. Zusätzlich wird die Verbindung beim Ereignis \texttt{beforeunload}, also beim Schließen oder Verlassen der Seite, geschlossen. Bei der Abmeldung sendet \texttt{logout()} eine Anfrage an \texttt{/auth/logout}, damit der Server die Sitzung sperrt und die Cookies löscht. Anschließend schließt der Client die Verbindung und setzt den Store zurück.
+
+Einige Toasts enthalten Schaltflächen, etwa \enquote{Join} bei einer Einladung. Deren Klick-Handler werden beim Eintreffen der Nachricht erzeugt, aber erst später ausgeführt. Damit sie dann die aktuelle Version von \texttt{joinLobby} aufrufen, greifen sie über Refs (\texttt{joinLobbyRef}, \texttt{declineInviteRef}) auf die Funktion zu. Die Refs werden bei jedem Rendern aktualisiert.
+
+\section{Zustand-Store als Brücke zwischen Socket und Oberfläche}
+
+Der Store in \texttt{store.ts} enthält alle Daten, die die Oberfläche benötigt: den angemeldeten Spieler, die Lobby-Liste, die aktuelle Lobby mit Chat und Tipp-Anzeige, Freunde, Freundschaftsanfragen, Einladungen, die privaten Chats und die aktuelle Seite. Zu jedem Feld gibt es Funktionen, die es verändern. Sie erzeugen stets neue Objekte bzw.\ Arrays, anstatt bestehende zu verändern. Nur so erkennen Zustand und React, dass sich etwas geändert hat.
+
+Der \texttt{onmessage}-Handler ruft die Funktionen des Stores über \texttt{useStore.getState()} auf (Listing~\ref{lst:store}). Da \texttt{getState()} immer den aktuellen Zustand liefert, spielt es keine Rolle, dass der Handler nur einmal beim Verbindungsaufbau registriert wird. Die Komponenten lesen den Store über Selektoren. \texttt{MainMenu} abonniert zum Beispiel nur \texttt{broadcastedLobbies} und wird deshalb nur neu gerendert, wenn sich die Lobby-Liste ändert. Abbildung~\ref{fig:datenfluss} zeigt den Weg einer Nachricht vom Socket bis zur Anzeige und den umgekehrten Weg einer Nutzeraktion.
+
+\begin{lstlisting}[language=JavaScript, caption={Verarbeitung einer Nachricht und Lesen im Store (gekürzt)}, label=lst:store]
+// useWebSocket.tsx: eingehende Nachricht in den Store schreiben
+case MessageTypes.ResponseLobbyList:
+  useStore.getState().setBroadcastedLobbies(data.lobbies);
+  break;
+
+// store.ts: Funktion im Store
+setBroadcastedLobbies: (lobbies) => set({ broadcastedLobbies: lobbies }),
+
+// MainMenu.tsx: Komponente liest nur die Lobby-Liste
+const lobbies = useStore((state) => state.broadcastedLobbies);
+\end{lstlisting}
+
+\begin{figure}[ht]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[font=\sffamily\small, >=Stealth,
+  box/.style={draw, rounded corners=2pt, fill=white, minimum height=1.1cm, align=center, minimum width=2.8cm},
+  lbl/.style={font=\sffamily\scriptsize, align=center, inner sep=2pt}]
+  \node[box] (srv)   at (0,0)    {Server};
+  \node[box] (hook)  at (5,0)    {Hook\\\texttt{onmessage}};
+  \node[box] (store) at (10,0)   {Zustand-Store};
+  \node[box] (comp)  at (15,0)   {Komponente};
+  % eingehend (oben)
+  \draw[->, thick] ([yshift=0.25cm]srv.east) -- node[lbl, above, yshift=0.35cm] {JSON-Nachricht} ([yshift=0.25cm]hook.west);
+  \draw[->, thick] ([yshift=0.25cm]hook.east) -- node[lbl, above, yshift=0.35cm] {\texttt{getState().setX()}} ([yshift=0.25cm]store.west);
+  \draw[->, thick] ([yshift=0.25cm]store.east) -- node[lbl, above, yshift=0.35cm] {Selektor, Re-Rendering} ([yshift=0.25cm]comp.west);
+  % ausgehend (unten)
+  \draw[->] ([yshift=-0.25cm]hook.west) -- node[lbl, below, yshift=-0.35cm] {\texttt{ws.send()}} ([yshift=-0.25cm]srv.east);
+  \draw[->] (comp.south) -- ++(0,-1.2) -| node[lbl, pos=0.25, below] {Aufruf einer Hook-Funktion über Props (\texttt{joinLobby}, \texttt{sendLobbyChatMessage}, \ldots)} (hook.south);
+\end{tikzpicture}}
+\caption{Datenfluss im Client: eingehende Nachrichten (oben) und Nutzeraktionen (unten)}
+\label{fig:datenfluss}
+\end{figure}
+
+Bei manchen Nachrichten leitet der Client aus dem Unterschied zwischen altem und neuem Zustand zusätzliche Informationen ab. Bei \texttt{lobby\_updated} vergleicht er die Spielerliste der bisherigen Lobby mit der neuen und zeigt für jeden hinzugekommenen bzw.\ fehlenden Spieler einen Hinweis an (\enquote{lena joined the lobby}).
+
+Für die privaten Chats speichert der Store je Freund die Nachrichten, die Zahl der ungelesenen Nachrichten, den Zeitpunkt der letzten Aktivität und ob der Freund gerade tippt. Welche Nachricht zuletzt gelesen wurde, wird zusätzlich im \texttt{localStorage} abgelegt. Der Schlüssel enthält die IDs beider Spieler, da sich mehrere Konten einen Browser teilen können. Dadurch stimmen die Zähler auch nach einem Neuladen.
+
+\section{Benutzeroberfläche}
+
+Die Seiten zeigen ausschließlich Daten aus dem Store an und rufen für Aktionen die Funktionen aus \texttt{useWebSocket} auf. Ein Klick auf eine Lobby im Hauptmenü ruft \texttt{joinLobby} auf. Die Lobby-Ansicht erscheint aber erst, wenn der Server mit \texttt{join\_lobby\_successful} antwortet und der Store die Seite wechselt. Die Oberfläche zeigt damit immer den Zustand, den der Server bestätigt hat.
+
+Abbildung~\ref{fig:freunde} zeigt das Profilmenü mit der Freundesliste. Der grüne Punkt neben jedem Namen gibt den Online-Status an. Das Feld darüber dient zum Senden von Freundschaftsanfragen, darunter stehen offene Anfragen mit Schaltflächen zum Annehmen und Ablehnen. Hat der Spieler offene Anfragen oder Einladungen, zeigt das Profilsymbol einen roten Zähler. Die Lobby-Ansicht und der private Chat werden in Kapitel~\ref{kap:umsetzung} bei den jeweiligen Anforderungen gezeigt.
+
+\begin{figure}[ht]
+  \centering
+  \screenshot[0.8\linewidth]{freunde.png}
+  \caption{Profilmenü mit Freundesliste und Online-Status}
+  \label{fig:freunde}
+\end{figure}
